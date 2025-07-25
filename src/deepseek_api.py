@@ -33,12 +33,12 @@ class DeepSeekAPI:
 
         config = Config()
         try:
-            self.api_key = config.validate_api_key_param(api_key, "API 密钥")
-            self.model = config.validate_token_param(model, "模型名称")
+            self.api_key = config._validate_api_key_param(api_key, "API 密钥")
+            self.model = config._validate_token_param(model, "模型名称")
             api_base_url = api_base if api_base else "https://api.deepseek.com/v1"
-            self.api_base = config.validate_url_param(api_base_url, "API base URL")
+            self.api_base = config._validate_url_param(api_base_url, "API base URL")
         except ValueError as e:
-            config.log_validation_error(e, "DeepSeek API 初始化")
+            config._log_validation_error(e, "DeepSeek API 初始化")
             raise
         try:
             self.client = openai.OpenAI(
@@ -60,17 +60,17 @@ class DeepSeekAPI:
 
         config = Config()
         try:
-            config.validate_token_param(prompt, "提示内容")
+            config._validate_token_param(prompt, "提示内容")
             if system_prompt:
-                config.validate_token_param(system_prompt, "系统提示")
-            config.validate_numeric_param(
+                config._validate_token_param(system_prompt, "系统提示")
+            config._validate_numeric_param(
                 max_tokens, "max_tokens", min_value=1, max_value=4096
             )
-            config.validate_numeric_param(
+            config._validate_numeric_param(
                 temperature, "temperature", min_value=0, max_value=2
             )
         except ValueError as e:
-            config.log_validation_error(e, "DeepSeek API 参数验证")
+            config._log_validation_error(e, "DeepSeek API 参数验证")
             raise
 
     @retry_async(
@@ -138,8 +138,8 @@ class DeepSeekAPI:
                 raise ValueError(f"消息 {i} 必须包含 'role' 和 'content' 字段")
             if not isinstance(msg["content"], str) or len(msg["content"].strip()) == 0:
                 raise ValueError(f"消息 {i} 的内容不能为空")
-        config.validate_numeric_param(max_tokens, "max_tokens", min_value=1)
-        config.validate_numeric_param(
+        config._validate_numeric_param(max_tokens, "max_tokens", min_value=1)
+        config._validate_numeric_param(
             temperature, "temperature", min_value=0, max_value=2
         )
 

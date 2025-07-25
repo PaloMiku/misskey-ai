@@ -27,14 +27,14 @@ class MisskeyAPI:
 
         config = Config()
         try:
-            self.instance_url = config.validate_url_param(
+            self.instance_url = config._validate_url_param(
                 instance_url, "实例 URL"
             ).rstrip("/")
-            self.access_token = config.validate_access_token_param(
+            self.access_token = config._validate_access_token_param(
                 access_token, "访问令牌"
             )
         except ValueError as e:
-            config.log_validation_error(e, "Misskey API 初始化")
+            config._log_validation_error(e, "Misskey API 初始化")
             raise
         self.config = config
         self.headers = {
@@ -79,7 +79,7 @@ class MisskeyAPI:
         from .config import Config
 
         config = Config()
-        config.validate_string_param(endpoint, "API 端点", min_length=1)
+        config._validate_string_param(endpoint, "API 端点", min_length=1)
         if data is not None and not isinstance(data, dict):
             raise ValueError("请求数据必须是字典格式")
         session = await self._ensure_session()
