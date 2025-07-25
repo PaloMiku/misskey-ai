@@ -4,6 +4,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 from loguru import logger
+from .utils import extract_username
 
 
 class PluginBase(ABC):
@@ -50,12 +51,7 @@ class PluginBase(ABC):
         logger.info(f"插件 {self.name} {'启用' if enabled else '禁用'}")
 
     def _extract_username(self, data: Dict[str, Any]) -> str:
-        user_info = data.get("fromUser") or data.get("user", {})
-        return (
-            user_info.get("username", "unknown")
-            if isinstance(user_info, dict)
-            else "unknown"
-        )
+        return extract_username(data)
 
     def _log_plugin_action(self, action: str, details: str = "") -> None:
         if details:

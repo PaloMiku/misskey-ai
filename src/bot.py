@@ -31,7 +31,7 @@ from .constants import (
     ERROR_MESSAGES,
     DEFAULT_ERROR_MESSAGE,
 )
-from .utils import retry_async
+from .utils import retry_async, extract_user_id, extract_username
 
 
 class MisskeyBot:
@@ -663,15 +663,7 @@ class MisskeyBot:
             return False
 
     def _extract_user_id(self, message: Dict[str, Any]) -> Optional[str]:
-        user_info = message.get("fromUser") or message.get("user")
-        if isinstance(user_info, dict):
-            return user_info.get("id")
-        return message.get("userId") or message.get("fromUserId")
+        return extract_user_id(message)
 
     def _extract_username(self, message: Dict[str, Any]) -> str:
-        user_info = message.get("fromUser") or message.get("user", {})
-        return (
-            user_info.get("username", "unknown")
-            if isinstance(user_info, dict)
-            else "unknown"
-        )
+        return extract_username(message)

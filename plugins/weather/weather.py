@@ -39,12 +39,7 @@ class WeatherPlugin(PluginBase):
             if "note" in data and "type" in data:
                 note_data = data["note"]
                 text = note_data.get("text", "")
-                user_info = note_data.get("user", {})
-                username = (
-                    user_info.get("username", "unknown")
-                    if isinstance(user_info, dict)
-                    else "unknown"
-                )
+                username = self._extract_username(note_data)
             else:
                 text = data.get("text", "")
                 username = self._extract_username(data)

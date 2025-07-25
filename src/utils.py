@@ -6,7 +6,7 @@ import asyncio
 import platform
 import random
 from functools import wraps
-from typing import Dict, Any, Callable, Awaitable, TypeVar
+from typing import Dict, Any, Callable, Awaitable, TypeVar, Optional
 
 import psutil
 from loguru import logger
@@ -89,6 +89,22 @@ async def monitor_memory_usage() -> None:
         except Exception as e:
             logger.error(f"内存监控出现错误: {e}")
             await asyncio.sleep(interval_seconds)
+
+
+def extract_user_id(message: Dict[str, Any]) -> Optional[str]:
+    user_info = message.get("fromUser") or message.get("user")
+    if isinstance(user_info, dict):
+        return user_info.get("id")
+    return message.get("userId") or message.get("fromUserId")
+
+
+def extract_username(message: Dict[str, Any]) -> str:
+    user_info = message.get("fromUser") or message.get("user", {})
+    return (
+        user_info.get("username", "unknown")
+        if isinstance(user_info, dict)
+        else "unknown"
+    )
 
 
 def health_check() -> bool:
