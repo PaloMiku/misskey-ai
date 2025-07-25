@@ -22,10 +22,8 @@ from .utils import retry_async
 
 
 class MisskeyAPI:
-    def __init__(self, instance_url: str, access_token: str, config=None):
-        from .config import Config
-
-        config = Config()
+    def __init__(self, config, instance_url: str, access_token: str):
+        self.config = config
         try:
             self.instance_url = config._validate_url_param(
                 instance_url, "实例 URL"
@@ -36,7 +34,6 @@ class MisskeyAPI:
         except ValueError as e:
             config._log_validation_error(e, "Misskey API 初始化")
             raise
-        self.config = config
         self.headers = {
             "Content-Type": "application/json",
             "User-Agent": "MisskeyBot/1.0",
@@ -76,10 +73,7 @@ class MisskeyAPI:
     async def _make_request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        from .config import Config
-
-        config = Config()
-        config._validate_string_param(endpoint, "API 端点", min_length=1)
+        self.config._validate_string_param(endpoint, "API 端点", min_length=1)
         if data is not None and not isinstance(data, dict):
             raise ValueError("请求数据必须是字典格式")
         session = await self._ensure_session()

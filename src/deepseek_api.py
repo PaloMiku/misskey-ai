@@ -27,11 +27,13 @@ from openai import (
 
 class DeepSeekAPI:
     def __init__(
-        self, api_key: str, model: str = "deepseek-chat", api_base: Optional[str] = None
+        self,
+        config,
+        api_key: str,
+        model: str = "deepseek-chat",
+        api_base: Optional[str] = None,
     ):
-        from .config import Config
-
-        config = Config()
+        self.config = config
         try:
             self.api_key = config._validate_api_key_param(api_key, "API 密钥")
             self.model = config._validate_token_param(model, "模型名称")
@@ -56,21 +58,18 @@ class DeepSeekAPI:
         max_tokens: int,
         temperature: float,
     ) -> None:
-        from .config import Config
-
-        config = Config()
         try:
-            config._validate_token_param(prompt, "提示内容")
+            self.config._validate_token_param(prompt, "提示内容")
             if system_prompt:
-                config._validate_token_param(system_prompt, "系统提示")
-            config._validate_numeric_param(
+                self.config._validate_token_param(system_prompt, "系统提示")
+            self.config._validate_numeric_param(
                 max_tokens, "max_tokens", min_value=1, max_value=4096
             )
-            config._validate_numeric_param(
+            self.config._validate_numeric_param(
                 temperature, "temperature", min_value=0, max_value=2
             )
         except ValueError as e:
-            config._log_validation_error(e, "DeepSeek API 参数验证")
+            self.config._log_validation_error(e, "DeepSeek API 参数验证")
             raise
 
     @retry_async(
@@ -126,9 +125,6 @@ class DeepSeekAPI:
     def _validate_chat_messages(
         self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
     ) -> None:
-        from .config import Config
-
-        config = Config()
         if not messages or not isinstance(messages, list):
             raise ValueError("消息列表不能为空且必须是列表")
         for i, msg in enumerate(messages):
@@ -138,8 +134,8 @@ class DeepSeekAPI:
                 raise ValueError(f"消息 {i} 必须包含 'role' 和 'content' 字段")
             if not isinstance(msg["content"], str) or len(msg["content"].strip()) == 0:
                 raise ValueError(f"消息 {i} 的内容不能为空")
-        config._validate_numeric_param(max_tokens, "max_tokens", min_value=1)
-        config._validate_numeric_param(
+        self.config._validate_numeric_param(max_tokens, "max_tokens", min_value=1)
+        self.config._validate_numeric_param(
             temperature, "temperature", min_value=0, max_value=2
         )
 

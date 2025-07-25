@@ -43,15 +43,16 @@ class MisskeyBot:
         logger.debug(f"机器人启动时间 (UTC): {self.startup_time.isoformat()}")
         try:
             self.misskey = MisskeyAPI(
+                config=config,
                 instance_url=config.get("misskey.instance_url"),
                 access_token=config.get("misskey.access_token"),
-                config=config,
             )
             self.streaming = StreamingClient(
                 instance_url=config.get("misskey.instance_url"),
                 access_token=config.get("misskey.access_token"),
             )
             self.deepseek = DeepSeekAPI(
+                config=config,
                 api_key=config.get("deepseek.api_key"),
                 model=config.get("deepseek.model"),
                 api_base=config.get("deepseek.api_base"),
