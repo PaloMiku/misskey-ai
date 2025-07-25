@@ -12,7 +12,7 @@ async def handle_shutdown(error_msg: str = None) -> None:
         print(f"\n{error_msg}")
     try:
         await shutdown()
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         print(f"关闭时出错: {e}")
 
 
@@ -27,5 +27,5 @@ if __name__ == "__main__":
         asyncio.run(handle_shutdown(f"文件或网络错误: {e}"))
     except (ValueError, TypeError, KeyError) as e:
         asyncio.run(handle_shutdown(f"配置或数据错误: {e}"))
-    except Exception as e:
+    except (RuntimeError, ImportError, ModuleNotFoundError) as e:
         asyncio.run(handle_shutdown(f"运行时错误: {e}"))

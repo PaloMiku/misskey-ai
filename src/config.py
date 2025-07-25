@@ -43,7 +43,7 @@ class Config:
         except (OSError, IOError) as e:
             logger.error(f"配置文件读取错误: {e}")
             raise ConfigurationError(f"配置文件读取错误: {e}")
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError) as e:
             logger.error(f"加载配置文件未知错误: {e}")
             raise ConfigurationError(f"加载配置文件未知错误: {e}")
 
@@ -106,7 +106,7 @@ class Config:
                 content = f.read().strip()
                 logger.debug(f"从文件加载配置: {file_path}")
                 return content
-        except Exception as e:
+        except (OSError, IOError, ValueError, UnicodeDecodeError) as e:
             logger.debug(f"无法从文件加载配置 {file_path}: {e}，使用原始值")
             return file_path
 

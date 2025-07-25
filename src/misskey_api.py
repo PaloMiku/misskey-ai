@@ -125,7 +125,7 @@ class MisskeyAPI:
         except (TypeError, KeyError) as e:
             logger.error(f"Misskey API 数据处理错误: {e}")
             raise ValueError(f"API 响应数据格式错误: {e}")
-        except Exception as e:
+        except (RuntimeError, MemoryError) as e:
             logger.error(f"未知错误: {e}")
             raise APIConnectionError("Misskey", f"未知错误: {e}")
 
@@ -160,7 +160,7 @@ class MisskeyAPI:
                         logger.debug(
                             f"调整回复可见性从 {visibility} 到 {original_visibility} 以匹配原笔记"
                         )
-            except Exception as e:
+            except (APIConnectionError, APIRateLimitError, ValueError) as e:
                 logger.warning(f"获取原笔记可见性失败，使用默认设置: {e}")
                 if visibility is None:
                     visibility = "home"
@@ -244,6 +244,6 @@ class MisskeyAPI:
             chat_messages = await self._make_request("chat/history", data)
             logger.debug(f"通过 chat/history API 获取到 {len(chat_messages)} 条聊天")
             return chat_messages
-        except Exception as e:
+        except (APIConnectionError, APIRateLimitError, ValueError) as e:
             logger.debug(f"获取聊天失败: {e}")
             return []

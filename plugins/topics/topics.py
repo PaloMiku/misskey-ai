@@ -30,7 +30,7 @@ class TopicsPlugin(PluginBase):
                 "初始化完成", f"加载了 {len(self.topics)} 个主题关键词"
             )
             return True
-        except Exception as e:
+        except (OSError, ValueError, TypeError, AttributeError) as e:
             logger.error(f"Topics 插件初始化失败: {e}")
             return False
 
@@ -52,7 +52,7 @@ class TopicsPlugin(PluginBase):
                 "plugin_prompt": plugin_prompt,
                 "plugin_name": "Topics",
             }
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError, OSError) as e:
             logger.error(f"Topics 插件处理自动发帖失败: {e}")
             return None
 
@@ -75,7 +75,7 @@ class TopicsPlugin(PluginBase):
                     (initial_line,),
                 )
             logger.debug("Topics 数据库表创建/检查完成")
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             logger.warning(f"创建 topics 数据库表失败: {e}")
             raise
 
@@ -96,7 +96,7 @@ class TopicsPlugin(PluginBase):
                         line.strip() for line in f.readlines() if line.strip()
                     ]
             logger.debug(f"成功加载 {len(self.topics)} 个主题关键词")
-        except Exception as e:
+        except (OSError, IOError, UnicodeDecodeError) as e:
             logger.warning(f"加载主题文件失败: {e}")
             self.topics = ["科技", "生活", "学习", "思考", "创新"]
             logger.info(f"使用默认主题关键词: {self.topics}")
@@ -125,7 +125,7 @@ class TopicsPlugin(PluginBase):
                 for topic in example_topics:
                     f.write(f"{topic}\n")
             logger.info(f"已创建示例主题文件: {file_path}")
-        except Exception as e:
+        except (OSError, IOError, UnicodeEncodeError) as e:
             logger.warning(f"创建示例主题文件失败: {e}")
 
     async def _get_next_topic(self) -> str:
@@ -138,7 +138,7 @@ class TopicsPlugin(PluginBase):
             await self._update_last_used_line(last_used_line + 1)
             self._log_plugin_action("选择主题", f"{topic} (行数: {last_used_line + 1})")
             return topic
-        except Exception as e:
+        except (ValueError, TypeError, IndexError, OSError) as e:
             logger.warning(f"获取下一个主题失败: {e}")
             return self.topics[0] if self.topics else "生活"
 
@@ -148,7 +148,7 @@ class TopicsPlugin(PluginBase):
                 "SELECT last_used_line FROM topics_usage ORDER BY id DESC LIMIT 1"
             )
             return result[0][0] if result else 0
-        except Exception as e:
+        except (ValueError, TypeError, IndexError, OSError) as e:
             logger.warning(f"获取上次使用行数失败: {e}")
             return 0
 
@@ -158,5 +158,5 @@ class TopicsPlugin(PluginBase):
                 "UPDATE topics_usage SET last_used_line = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
                 (line_number,),
             )
-        except Exception as e:
+        except (ValueError, TypeError, OSError) as e:
             logger.warning(f"更新上次使用行数失败: {e}")

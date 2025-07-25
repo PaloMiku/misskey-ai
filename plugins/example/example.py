@@ -44,7 +44,7 @@ class ExamplePlugin(PluginBase):
                     logger.error("Example 插件响应验证失败")
                     return None
             return None
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
             logger.error(f"Example 插件处理提及时出错: {e}")
             return None
 
@@ -69,7 +69,7 @@ class ExamplePlugin(PluginBase):
                     logger.error("Example 插件响应验证失败")
                     return None
             return None
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
             logger.error(f"Example 插件处理消息时出错: {e}")
             return None
 
@@ -88,6 +88,6 @@ class ExamplePlugin(PluginBase):
             else:
                 logger.error("Example 插件响应验证失败")
                 return None
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError) as e:
             logger.error(f"Example 插件生成自动发布内容时出错: {e}")
             return None

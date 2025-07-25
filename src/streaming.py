@@ -151,7 +151,7 @@ class StreamingClient:
             self.heartbeat_task = asyncio.create_task(self._heartbeat())
             self.message_task = asyncio.create_task(self._handle_messages())
             logger.debug("WebSocket 心跳和消息处理任务已启动")
-        except Exception as e:
+        except (aiohttp.ClientError, OSError, ValueError, TypeError) as e:
             await self._cleanup_failed_connection()
             logger.error(f"WebSocket 连接失败: {e}")
             logger.debug(f"WebSocket 连接错误详情: {e}", exc_info=True)
@@ -189,7 +189,7 @@ class StreamingClient:
             self.session = None
             self.heartbeat_task = None
             self.message_task = None
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.debug(f"清理失败连接时出错: {e}")
 
     async def _disconnect_all_channels(self) -> None:
@@ -206,7 +206,7 @@ class StreamingClient:
                 ping_message = {"type": "ping", "body": {}}
                 await self.ws_connection.send_str(json.dumps(ping_message))
                 await asyncio.sleep(WS_HEARTBEAT_INTERVAL)
-            except Exception as e:
+            except (aiohttp.ClientError, OSError, ValueError) as e:
                 logger.error(f"心跳错误: {e}")
                 break
 
@@ -234,7 +234,7 @@ class StreamingClient:
                 elif msg.type == aiohttp.WSMsgType.CLOSE:
                     logger.info("WebSocket 连接已关闭")
                     break
-            except Exception as e:
+            except (aiohttp.ClientError, OSError, ValueError, TypeError) as e:
                 logger.error(f"处理 WebSocket 消息时出错: {e}")
                 break
 
@@ -332,7 +332,7 @@ class StreamingClient:
                     await handler(data)
                 else:
                     handler(data)
-            except Exception as e:
+            except (ValueError, TypeError, AttributeError, OSError) as e:
                 logger.error(f"事件处理器执行失败 ({event_type}): {e}")
                 logger.debug(f"{event_type} 处理器错误详情: {e}", exc_info=True)
 

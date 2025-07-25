@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from .config import Config
 from .bot import MisskeyBot
 from .utils import log_system_info, monitor_memory_usage
+from .exceptions import ConfigurationError, APIConnectionError, AuthenticationError
 
 bot: Optional[MisskeyBot] = None
 tasks: List[asyncio.Task] = []
@@ -42,7 +43,13 @@ async def main() -> None:
         await shutdown_event.wait()
     except asyncio.CancelledError:
         pass
-    except Exception as e:
+    except (
+        ConfigurationError,
+        APIConnectionError,
+        AuthenticationError,
+        OSError,
+        ValueError,
+    ) as e:
         logger.error(f"启动过程中发生错误: {e}")
         raise
     finally:

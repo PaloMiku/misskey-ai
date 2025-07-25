@@ -44,7 +44,7 @@ class PluginManager:
                 with open(config_file, "r", encoding="utf-8") as f:
                     config = yaml.safe_load(f) or {}
                 return config
-            except Exception as e:
+            except (OSError, IOError, yaml.YAMLError, UnicodeDecodeError) as e:
                 logger.error(f"加载插件 {plugin_dir.name} 配置文件时出错: {e}")
                 return {}
         else:
@@ -100,7 +100,7 @@ class PluginManager:
             self.plugin_configs[plugin_dir.name] = plugin_config
             status = "启用" if plugin_instance.enabled else "禁用"
             logger.debug(f"已发现插件: {plugin_dir.name} (状态: {status})")
-        except Exception as e:
+        except (ImportError, AttributeError, TypeError, OSError) as e:
             logger.warning(f"加载插件 {plugin_dir.name} 时出错: {e}")
 
     async def _initialize_plugins(self) -> None:
@@ -116,7 +116,7 @@ class PluginManager:
                         plugin.set_enabled(False)
                     else:
                         logger.debug(f"插件 {plugin_name} 初始化成功")
-            except Exception as e:
+            except (ValueError, TypeError, AttributeError, OSError) as e:
                 logger.error(f"初始化插件 {plugin_name} 时出错: {e}")
                 plugin.set_enabled(False)
 
@@ -126,7 +126,7 @@ class PluginManager:
                 try:
                     await plugin.cleanup()
                     logger.debug(f"插件 {plugin_name} 清理完成")
-                except Exception as e:
+                except (ValueError, TypeError, AttributeError, OSError) as e:
                     logger.error(f"清理插件 {plugin_name} 时出错: {e}")
 
     async def on_startup(self) -> None:
@@ -158,7 +158,7 @@ class PluginManager:
                     result = await method(*args, **kwargs)
                     if result is not None:
                         results.append(result)
-            except Exception as e:
+            except (ValueError, TypeError, AttributeError, OSError) as e:
                 logger.error(f"调用插件 {plugin_name} 的 {hook_name} hook 时出错: {e}")
         return results
 

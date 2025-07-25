@@ -50,7 +50,7 @@ class WeatherPlugin(PluginBase):
                 )
                 return await self._handle_weather_request(username, location_match)
             return None
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
             logger.error(f"Weather 插件处理提及时出错: {e}")
             return None
 
@@ -66,7 +66,7 @@ class WeatherPlugin(PluginBase):
                 )
                 return await self._handle_weather_request(username, location_match)
             return None
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
             logger.error(f"Weather 插件处理消息时出错: {e}")
             return None
 
@@ -113,7 +113,7 @@ class WeatherPlugin(PluginBase):
                         f"Weather API 2.5 请求失败，状态码: {response.status}"
                     )
                     return "抱歉，天气服务暂时不可用。"
-        except Exception as e:
+        except (aiohttp.ClientError, OSError, ValueError, KeyError) as e:
             logger.warning(f"获取天气信息时出错: {e}")
             return "抱歉，获取天气信息时出现错误。"
 
@@ -136,7 +136,7 @@ class WeatherPlugin(PluginBase):
                 else:
                     logger.warning(f"Geocoding API 请求失败，状态码: {response.status}")
                     return None
-        except Exception as e:
+        except (aiohttp.ClientError, OSError, ValueError, KeyError) as e:
             logger.warning(f"获取城市坐标时出错: {e}")
             return None
 

@@ -47,7 +47,7 @@ class DeepSeekAPI:
                 api_key=self.api_key, base_url=self.api_base, timeout=API_TIMEOUT
             )
             logger.debug(f"DeepSeek API 客户端初始化完成，base_url={self.api_base}")
-        except Exception as e:
+        except (ValueError, TypeError, OSError) as e:
             logger.error(f"创建 DeepSeek API 客户端失败: {e}")
             raise APIConnectionError("DeepSeek", f"客户端初始化失败: {e}")
 

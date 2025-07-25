@@ -160,7 +160,7 @@ class PersistenceManager:
             async with conn.execute(query, params) as cursor:
                 await conn.commit()
                 return cursor.lastrowid
-        except Exception as e:
+        except (aiosqlite.Error, OSError, ValueError) as e:
             await conn.rollback()
             logger.error(f"数据库插入操作失败: {e}")
             raise
@@ -173,7 +173,7 @@ class PersistenceManager:
             async with conn.execute(query, params) as cursor:
                 await conn.commit()
                 return cursor.rowcount
-        except Exception as e:
+        except (aiosqlite.Error, OSError, ValueError) as e:
             await conn.rollback()
             logger.error(f"数据库更新操作失败: {e}")
             raise
@@ -331,7 +331,7 @@ class PersistenceManager:
         try:
             await conn.execute("VACUUM")
             logger.debug("数据库优化完成")
-        except Exception as e:
+        except (aiosqlite.Error, OSError) as e:
             logger.error(f"数据库优化失败: {e}")
         finally:
             await self._pool.return_connection(conn)

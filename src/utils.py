@@ -28,7 +28,7 @@ def retry_async(
             for attempt in range(max_retries):
                 try:
                     return await func(*args, **kwargs)
-                except Exception as e:
+                except BaseException as e:
                     last_error = e
                     if retryable_exceptions and not isinstance(e, retryable_exceptions):
                         raise
@@ -86,7 +86,7 @@ async def monitor_memory_usage() -> None:
             await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
             break
-        except Exception as e:
+        except (OSError, ValueError, AttributeError) as e:
             logger.error(f"内存监控出现错误: {e}")
             await asyncio.sleep(interval_seconds)
 
@@ -117,6 +117,6 @@ def health_check() -> bool:
         if not current_process.is_running():
             return False
         return True
-    except Exception as e:
+    except (OSError, ValueError, AttributeError) as e:
         logger.error(f"健康检查失败: {e}")
         return False
