@@ -124,6 +124,12 @@ class MisskeyBot:
             return
         logger.info("启动服务组件...")
         self.running = True
+        await self._initialize_services()
+        await self._setup_scheduler()
+        await self._setup_streaming()
+        logger.info("服务组件就绪，开始监听...")
+
+    async def _initialize_services(self) -> None:
         await self.persistence.initialize()
         try:
             current_user = await self.misskey.get_current_user()
@@ -135,6 +141,8 @@ class MisskeyBot:
         await self._load_recent_processed_items()
         await self.plugin_manager.load_plugins()
         await self.plugin_manager.on_startup()
+
+    async def _setup_scheduler(self) -> None:
         self.scheduler.add_job(
             self._reset_daily_post_count,
             "cron",
@@ -166,6 +174,8 @@ class MisskeyBot:
                 next_run_time=datetime.now(timezone.utc) + timedelta(minutes=1),
             )
         self.scheduler.start()
+
+    async def _setup_streaming(self) -> None:
         self.streaming.on_mention(self._handle_mention)
         self.streaming.on_message(self._handle_message)
         try:
@@ -182,7 +192,6 @@ class MisskeyBot:
             logger.error(f"WebSocket 启动失败: {e}，启用轮询模式")
             polling_task = asyncio.create_task(self._poll_mentions())
             self.tasks.append(polling_task)
-        logger.info("服务组件就绪，开始监听...")
 
     async def stop(self) -> None:
         if not self.running:
@@ -280,8 +289,8 @@ class MisskeyBot:
                             if self._is_message_after_startup(mention):
                                 await self._handle_mention(mention)
                             else:
-                                user_id = self._extract_user_id(mention)
-                                username = self._extract_username(mention)
+                                user_id = extract_user_id(mention)
+                                username = extract_username(mention)
                                 await self._mark_processed(
                                     mention_id, user_id, username, "mention"
                                 )
@@ -316,8 +325,8 @@ class MisskeyBot:
                         if self._is_message_after_startup(message):
                             await self._handle_message(message)
                         else:
-                            user_id = self._extract_user_id(message)
-                            username = self._extract_username(message)
+                            user_id = extract_user_id(message)
+                            username = extract_username(message)
                             await self._mark_processed(
                                 message_id, user_id, username, "message"
                             )
@@ -332,6 +341,21 @@ class MisskeyBot:
     async def _handle_mention(self, note: Dict[str, Any]) -> None:
         if not self.config.get("bot.response.mention_enabled"):
             return
+        mention_data = self._parse_mention_data(note)
+        if not mention_data["mention_id"]:
+            return
+        try:
+            await self._process_mention(mention_data, note)
+        except (
+            ValueError,
+            APIConnectionError,
+            APIRateLimitError,
+            AuthenticationError,
+            OSError,
+        ) as e:
+            await self._handle_mention_error(e, mention_data)
+
+    def _parse_mention_data(self, note: Dict[str, Any]) -> Dict[str, Any]:
         is_reply_event = (
             "note" in note and "type" in note and note.get("type") == "reply"
         )
@@ -350,69 +374,97 @@ class MisskeyBot:
             mention_id = note.get("id")
             reply_target_id = note.get("note", {}).get("id")
             text = note.get("note", {}).get("text", "")
-            user_id = self._extract_user_id(note)
-            username = self._extract_username(note)
-        if not mention_id:
+            user_id = extract_user_id(note)
+            username = extract_username(note)
+        return {
+            "mention_id": mention_id,
+            "reply_target_id": reply_target_id,
+            "text": text,
+            "user_id": user_id,
+            "username": username,
+        }
+
+    async def _process_mention(
+        self, mention_data: Dict[str, Any], note: Dict[str, Any]
+    ) -> None:
+        await self._mark_processed(
+            mention_data["mention_id"],
+            mention_data["user_id"],
+            mention_data["username"],
+            "mention",
+        )
+        logger.info(
+            f"收到 @{mention_data['username']} 的提及: {self._format_log_text(mention_data['text'])}"
+        )
+        if await self._try_plugin_mention_response(mention_data, note):
+            return
+        await self._generate_ai_mention_response(mention_data)
+
+    async def _try_plugin_mention_response(
+        self, mention_data: Dict[str, Any], note: Dict[str, Any]
+    ) -> bool:
+        plugin_results = await self.plugin_manager.on_mention(note)
+        for result in plugin_results:
+            if result and result.get("handled"):
+                logger.debug(f"提及已被插件处理: {result.get('plugin_name')}")
+                response = result.get("response")
+                if response:
+                    formatted_response = f"@{mention_data['username']}\n{response}"
+                    await self.misskey.create_note(
+                        formatted_response, reply_id=mention_data["reply_target_id"]
+                    )
+                    logger.info(
+                        f"插件已回复 @{mention_data['username']}: {self._format_log_text(formatted_response)}"
+                    )
+                return True
+        return False
+
+    async def _generate_ai_mention_response(self, mention_data: Dict[str, Any]) -> None:
+        ai_config = self._ai_config
+        try:
+            reply = await self.deepseek.generate_reply(
+                mention_data["text"], self.system_prompt, **ai_config
+            )
+            logger.debug("生成提及回复成功")
+        except (APIRateLimitError, APIConnectionError, AuthenticationError) as e:
+            error_message = self._handle_error(e, "生成回复时")
+            await self._send_error_reply(
+                mention_data["username"], mention_data["reply_target_id"], error_message
+            )
             return
         try:
-            await self._mark_processed(mention_id, user_id, username, "mention")
-            logger.info(f"收到 @{username} 的提及: {self._format_log_text(text)}")
-            plugin_results = await self.plugin_manager.on_mention(note)
-            for result in plugin_results:
-                if result and result.get("handled"):
-                    logger.debug(f"提及已被插件处理: {result.get('plugin_name')}")
-                    response = result.get("response")
-                    if response:
-                        formatted_response = f"@{username}\n{response}"
-                        await self.misskey.create_note(
-                            formatted_response, reply_id=reply_target_id
-                        )
-                        logger.info(
-                            f"插件已回复 @{username}: {self._format_log_text(formatted_response)}"
-                        )
-                    return
-            ai_config = self._ai_config
-            try:
-                reply = await self.deepseek.generate_reply(
-                    text, self.system_prompt, **ai_config
-                )
-                logger.debug("生成提及回复成功")
-            except (APIRateLimitError, APIConnectionError, AuthenticationError) as e:
-                error_message = self._handle_error(e, "生成回复时")
-                await self._send_error_reply(username, reply_target_id, error_message)
-                return
-            try:
-                formatted_reply = f"@{username}\n{reply}"
-                await self.misskey.create_note(
-                    formatted_reply, reply_id=reply_target_id
-                )
-                logger.info(
-                    f"已回复 @{username}: {self._format_log_text(formatted_reply)}"
-                )
-            except (APIRateLimitError, APIConnectionError, AuthenticationError) as e:
-                self._handle_error(e, "发送回复时")
+            formatted_reply = f"@{mention_data['username']}\n{reply}"
+            await self.misskey.create_note(
+                formatted_reply, reply_id=mention_data["reply_target_id"]
+            )
+            logger.info(
+                f"已回复 @{mention_data['username']}: {self._format_log_text(formatted_reply)}"
+            )
+        except (APIRateLimitError, APIConnectionError, AuthenticationError) as e:
+            self._handle_error(e, "发送回复时")
+            await self._send_error_reply(
+                mention_data["username"],
+                mention_data["reply_target_id"],
+                "抱歉，回复发送失败，请稍后再试。",
+            )
+
+    async def _handle_mention_error(
+        self, e: Exception, mention_data: Dict[str, Any]
+    ) -> None:
+        if isinstance(e, ValueError):
+            logger.error(f"输入验证错误: {e}")
+        else:
+            logger.error(f"处理提及时出错: {e}")
+        self._handle_error(e, "处理提及时")
+        try:
+            if mention_data["username"] and mention_data["reply_target_id"]:
                 await self._send_error_reply(
-                    username, reply_target_id, "抱歉，回复发送失败，请稍后再试。"
+                    mention_data["username"],
+                    mention_data["reply_target_id"],
+                    "抱歉，处理您的提及时出现了错误。",
                 )
-        except (
-            ValueError,
-            APIConnectionError,
-            APIRateLimitError,
-            AuthenticationError,
-            OSError,
-        ) as e:
-            if isinstance(e, ValueError):
-                logger.error(f"输入验证错误: {e}")
-            else:
-                logger.error(f"处理提及时出错: {e}")
-            self._handle_error(e, "处理提及时")
-            try:
-                if username and reply_target_id:
-                    await self._send_error_reply(
-                        username, reply_target_id, "抱歉，处理您的提及时出现了错误。"
-                    )
-            except (APIConnectionError, APIRateLimitError, OSError) as reply_error:
-                logger.error(f"发送错误回复失败: {reply_error}")
+        except (APIConnectionError, APIRateLimitError, OSError) as reply_error:
+            logger.error(f"发送错误回复失败: {reply_error}")
 
     async def _handle_message(self, message: Dict[str, Any]) -> None:
         if not self.config.get("bot.response.chat_enabled"):
@@ -429,50 +481,7 @@ class MisskeyBot:
             logger.debug(f"已处理: {message_id}")
             return
         try:
-            text = (
-                message.get("text") or message.get("content") or message.get("body", "")
-            )
-            user_id = self._extract_user_id(message)
-            username = self._extract_username(message)
-            logger.debug(
-                f"解析聊天 - ID: {message_id}, 用户 ID: {user_id}, 文本: {self._format_log_text(text)}..."
-            )
-            if self.bot_user_id and user_id == self.bot_user_id:
-                logger.debug(f"跳过自己发送的聊天: {message_id}")
-                await self._mark_processed(message_id, user_id, username, "message")
-                return
-            await self._mark_processed(message_id, user_id, username, "message")
-            if not (user_id and text):
-                logger.debug(
-                    f"聊天缺少必要信息 - 用户 ID: {user_id}, 文本: {bool(text)}"
-                )
-                return
-            logger.info(f"收到 @{username} 的聊天: {self._format_log_text(text)}")
-            plugin_results = await self.plugin_manager.on_message(message)
-            for result in plugin_results:
-                if result and result.get("handled"):
-                    logger.debug(f"聊天已被插件处理: {result.get('plugin_name')}")
-                    response = result.get("response")
-                    if response:
-                        await self.misskey.send_message(user_id, response)
-                        logger.info(
-                            f"插件已回复 @{username}: {self._format_log_text(response)}"
-                        )
-                    return
-            chat_history = await self._get_chat_history(user_id)
-            chat_history.append({"role": "user", "content": text})
-            if not chat_history or chat_history[0].get("role") != "system":
-                chat_history.insert(
-                    0, {"role": "system", "content": self.system_prompt}
-                )
-            ai_config = self._ai_config
-            reply = await self.deepseek.generate_chat_response(
-                chat_history, **ai_config
-            )
-            logger.debug("生成聊天回复成功")
-            await self.misskey.send_message(user_id, reply)
-            logger.info(f"已回复 @{username}: {self._format_log_text(reply)}")
-            chat_history.append({"role": "assistant", "content": reply})
+            await self._process_chat_message(message, message_id)
         except (
             APIConnectionError,
             APIRateLimitError,
@@ -482,6 +491,58 @@ class MisskeyBot:
         ) as e:
             logger.error(f"处理聊天时出错: {e}")
             logger.debug(f"处理聊天详细错误: {e}", exc_info=True)
+
+    async def _process_chat_message(
+        self, message: Dict[str, Any], message_id: str
+    ) -> None:
+        text = message.get("text") or message.get("content") or message.get("body", "")
+        user_id = extract_user_id(message)
+        username = extract_username(message)
+        logger.debug(
+            f"解析聊天 - ID: {message_id}, 用户 ID: {user_id}, 文本: {self._format_log_text(text)}..."
+        )
+        if self.bot_user_id and user_id == self.bot_user_id:
+            logger.debug(f"跳过自己发送的聊天: {message_id}")
+            await self._mark_processed(message_id, user_id, username, "message")
+            return
+        await self._mark_processed(message_id, user_id, username, "message")
+        if not (user_id and text):
+            logger.debug(f"聊天缺少必要信息 - 用户 ID: {user_id}, 文本: {bool(text)}")
+            return
+        logger.info(f"收到 @{username} 的聊天: {self._format_log_text(text)}")
+        if await self._try_plugin_message_response(message, user_id, username):
+            return
+        await self._generate_ai_chat_response(user_id, username, text)
+
+    async def _try_plugin_message_response(
+        self, message: Dict[str, Any], user_id: str, username: str
+    ) -> bool:
+        plugin_results = await self.plugin_manager.on_message(message)
+        for result in plugin_results:
+            if result and result.get("handled"):
+                logger.debug(f"聊天已被插件处理: {result.get('plugin_name')}")
+                response = result.get("response")
+                if response:
+                    await self.misskey.send_message(user_id, response)
+                    logger.info(
+                        f"插件已回复 @{username}: {self._format_log_text(response)}"
+                    )
+                return True
+        return False
+
+    async def _generate_ai_chat_response(
+        self, user_id: str, username: str, text: str
+    ) -> None:
+        chat_history = await self._get_chat_history(user_id)
+        chat_history.append({"role": "user", "content": text})
+        if not chat_history or chat_history[0].get("role") != "system":
+            chat_history.insert(0, {"role": "system", "content": self.system_prompt})
+        ai_config = self._ai_config
+        reply = await self.deepseek.generate_chat_response(chat_history, **ai_config)
+        logger.debug("生成聊天回复成功")
+        await self.misskey.send_message(user_id, reply)
+        logger.info(f"已回复 @{username}: {self._format_log_text(reply)}")
+        chat_history.append({"role": "assistant", "content": reply})
 
     async def _send_error_reply(
         self, username: str, note_id: str, message: str
@@ -519,70 +580,17 @@ class MisskeyBot:
         if not self.running:
             return
         try:
-            current_date = datetime.now(timezone.utc).date()
-            if current_date != self.today:
-                self._reset_daily_post_count()
-            max_posts = self.config.get("bot.auto_post.max_posts_per_day")
-            if self.posts_today >= max_posts:
-                logger.debug(f"今日发帖数量已达上限 ({max_posts})，跳过自动发帖")
+            if not self._check_auto_post_limits():
                 return
+            max_posts = self.config.get("bot.auto_post.max_posts_per_day")
 
             def log_post_success(post_content: str) -> None:
                 logger.info(f"自动发帖成功: {self._format_log_text(post_content)}")
                 logger.info(f"今日发帖计数: {self.posts_today}/{max_posts}")
 
-            plugin_results = await self.plugin_manager.on_auto_post()
-            plugin_prompt = ""
-            timestamp_override = None
-            for result in plugin_results:
-                if result and result.get("content"):
-                    post_content = result.get("content")
-                    visibility = result.get(
-                        "visibility", self.config.get("bot.auto_post.visibility")
-                    )
-                    await self.misskey.create_note(post_content, visibility=visibility)
-                    self.posts_today += 1
-                    self.last_auto_post_time = datetime.now(timezone.utc)
-                    log_post_success(post_content)
-                    return
-                elif result and result.get("modify_prompt"):
-                    if result.get("plugin_prompt"):
-                        plugin_prompt = result.get("plugin_prompt")
-                    if result.get("timestamp"):
-                        timestamp_override = result.get("timestamp")
-                    logger.info(
-                        f"插件 {result.get('plugin_name')} 请求修改提示词: {plugin_prompt}"
-                    )
-            post_prompt = self.config.get(
-                "bot.auto_post.prompt", "生成一篇有趣、有见解的社交媒体帖子。"
-            )
-            ai_config = self._ai_config
-            try:
-                plugin_name = "system"
-                for result in plugin_results:
-                    if (
-                        result
-                        and result.get("modify_prompt")
-                        and result.get("plugin_prompt")
-                    ):
-                        plugin_name = result.get("plugin_name", "unknown")
-                        break
-                post_content = await self._generate_post_with_plugin(
-                    self.system_prompt,
-                    post_prompt,
-                    plugin_prompt,
-                    timestamp_override,
-                    plugin_name,
-                    **ai_config,
-                )
-            except ValueError as e:
-                logger.warning(f"自动发帖失败: {e}，跳过本次发帖")
+            if await self._try_plugin_auto_post(log_post_success):
                 return
-            visibility = self.config.get("bot.auto_post.visibility")
-            await self.misskey.create_note(post_content, visibility=visibility)
-            self.posts_today += 1
-            self.last_auto_post_time = datetime.now(timezone.utc)
-            log_post_success(post_content)
+            await self._generate_ai_auto_post(log_post_success)
         except (
             APIConnectionError,
             APIRateLimitError,
@@ -591,6 +599,75 @@ class MisskeyBot:
             OSError,
         ) as e:
             logger.error(f"自动发帖时出错: {e}")
+
+    def _check_auto_post_limits(self) -> bool:
+        current_date = datetime.now(timezone.utc).date()
+        if current_date != self.today:
+            self._reset_daily_post_count()
+        max_posts = self.config.get("bot.auto_post.max_posts_per_day")
+        if self.posts_today >= max_posts:
+            logger.debug(f"今日发帖数量已达上限 ({max_posts})，跳过自动发帖")
+            return False
+        return True
+
+    async def _try_plugin_auto_post(self, log_post_success) -> bool:
+        plugin_results = await self.plugin_manager.on_auto_post()
+        for result in plugin_results:
+            if result and result.get("content"):
+                post_content = result.get("content")
+                visibility = result.get(
+                    "visibility", self.config.get("bot.auto_post.visibility")
+                )
+                await self.misskey.create_note(post_content, visibility=visibility)
+                self.posts_today += 1
+                self.last_auto_post_time = datetime.now(timezone.utc)
+                log_post_success(post_content)
+                return True
+        return False
+
+    async def _generate_ai_auto_post(self, log_post_success) -> None:
+        plugin_results = await self.plugin_manager.on_auto_post()
+        plugin_prompt = ""
+        timestamp_override = None
+        for result in plugin_results:
+            if result and result.get("modify_prompt"):
+                if result.get("plugin_prompt"):
+                    plugin_prompt = result.get("plugin_prompt")
+                if result.get("timestamp"):
+                    timestamp_override = result.get("timestamp")
+                logger.info(
+                    f"插件 {result.get('plugin_name')} 请求修改提示词: {plugin_prompt}"
+                )
+        post_prompt = self.config.get(
+            "bot.auto_post.prompt", "生成一篇有趣、有见解的社交媒体帖子。"
+        )
+        ai_config = self._ai_config
+        try:
+            plugin_name = "system"
+            for result in plugin_results:
+                if (
+                    result
+                    and result.get("modify_prompt")
+                    and result.get("plugin_prompt")
+                ):
+                    plugin_name = result.get("plugin_name", "unknown")
+                    break
+            post_content = await self._generate_post_with_plugin(
+                self.system_prompt,
+                post_prompt,
+                plugin_prompt,
+                timestamp_override,
+                plugin_name,
+                **ai_config,
+            )
+        except ValueError as e:
+            logger.warning(f"自动发帖失败: {e}，跳过本次发帖")
+            return
+        visibility = self.config.get("bot.auto_post.visibility")
+        await self.misskey.create_note(post_content, visibility=visibility)
+        self.posts_today += 1
+        self.last_auto_post_time = datetime.now(timezone.utc)
+        log_post_success(post_content)
 
     async def _generate_post_with_plugin(
         self,
@@ -656,38 +733,39 @@ class MisskeyBot:
             if not created_at:
                 logger.debug(f"缺少时间戳信息: {message.get('id', 'unknown')}")
                 return False
-            if isinstance(created_at, str):
-                try:
-                    message_time = datetime.fromisoformat(
-                        created_at.replace("Z", "+00:00")
-                    )
-                    if message_time.tzinfo is None:
-                        message_time = message_time.replace(tzinfo=timezone.utc)
-                except ValueError:
-                    logger.debug(f"无法解析时间戳格式: {created_at}")
-                    return False
-            elif isinstance(created_at, (int, float)):
-                message_time = datetime.fromtimestamp(
-                    created_at / 1000 if created_at > 1e10 else created_at,
-                    tz=timezone.utc,
-                )
-            else:
-                logger.debug(f"未知的时间戳类型: {type(created_at)}")
+            message_time = self._parse_message_timestamp(created_at)
+            if message_time is None:
                 return False
-            startup_time = self.startup_time
-            if startup_time.tzinfo is None:
-                startup_time = startup_time.replace(tzinfo=timezone.utc)
-            is_after = message_time > startup_time
-            logger.debug(
-                f"时间检查 - 消息时间: {message_time.isoformat()}, 启动时间: {self.startup_time.isoformat()}, 结果: {is_after}"
-            )
-            return is_after
+            return self._compare_message_time(message_time)
         except (ValueError, TypeError, AttributeError) as e:
             logger.debug(f"检查时间时出错: {e}")
             return False
 
-    def _extract_user_id(self, message: Dict[str, Any]) -> Optional[str]:
-        return extract_user_id(message)
+    def _parse_message_timestamp(self, created_at) -> Optional[datetime]:
+        if isinstance(created_at, str):
+            try:
+                message_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                if message_time.tzinfo is None:
+                    message_time = message_time.replace(tzinfo=timezone.utc)
+                return message_time
+            except ValueError:
+                logger.debug(f"无法解析时间戳格式: {created_at}")
+                return None
+        elif isinstance(created_at, (int, float)):
+            return datetime.fromtimestamp(
+                created_at / 1000 if created_at > 1e10 else created_at,
+                tz=timezone.utc,
+            )
+        else:
+            logger.debug(f"未知的时间戳类型: {type(created_at)}")
+            return None
 
-    def _extract_username(self, message: Dict[str, Any]) -> str:
-        return extract_username(message)
+    def _compare_message_time(self, message_time: datetime) -> bool:
+        startup_time = self.startup_time
+        if startup_time.tzinfo is None:
+            startup_time = startup_time.replace(tzinfo=timezone.utc)
+        is_after = message_time > startup_time
+        logger.debug(
+            f"时间检查 - 消息时间: {message_time.isoformat()}, 启动时间: {self.startup_time.isoformat()}, 结果: {is_after}"
+        )
+        return is_after

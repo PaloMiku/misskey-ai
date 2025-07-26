@@ -87,29 +87,37 @@ class DeepSeekAPI:
         self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
     ) -> str:
         try:
-            response = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.client.chat.completions.create,
-                    model=self.model,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                ),
-                timeout=API_TIMEOUT,
-            )
-            generated_text = response.choices[0].message.content
-            if not generated_text:
-                raise APIConnectionError("DeepSeek", "API 返回空内容")
-            logger.debug(
-                f"DeepSeek API 单轮文本调用成功，生成内容长度: {len(generated_text)}"
-            )
-            return generated_text
+            response = await self._make_api_request(messages, max_tokens, temperature)
+            return self._process_api_response(response, "单轮文本")
         except BadRequestError as e:
             raise ValueError(f"API 请求参数错误: {e}")
         except AuthenticationError as e:
             raise CustomAuthError(f"DeepSeek API 认证失败: {e}")
         except (ValueError, TypeError, KeyError) as e:
             raise ValueError(f"API 响应数据格式错误: {e}")
+
+    async def _make_api_request(
+        self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
+    ):
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=self.model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            ),
+            timeout=API_TIMEOUT,
+        )
+
+    def _process_api_response(self, response, call_type: str) -> str:
+        generated_text = response.choices[0].message.content
+        if not generated_text:
+            raise APIConnectionError("DeepSeek", "API 返回空内容")
+        logger.debug(
+            f"DeepSeek API {call_type}调用成功，生成内容长度: {len(generated_text)}"
+        )
+        return generated_text
 
     def __enter__(self):
         return self
@@ -154,22 +162,8 @@ class DeepSeekAPI:
         self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
     ) -> str:
         try:
-            response = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.client.chat.completions.create,
-                    model=self.model,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                ),
-                timeout=API_TIMEOUT,
-            )
-            generated_text = response.choices[0].message.content
-            if not generated_text:
-                raise APIConnectionError("DeepSeek", "API 返回空内容")
-            logger.debug(
-                f"DeepSeek API 多轮对话调用成功，生成内容长度: {len(generated_text)}"
-            )
+            response = await self._make_api_request(messages, max_tokens, temperature)
+            generated_text = self._process_api_response(response, "多轮对话")
             return generated_text.strip()
         except BadRequestError as e:
             raise ValueError(f"API 请求参数错误: {e}")

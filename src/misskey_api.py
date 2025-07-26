@@ -66,6 +66,38 @@ class MisskeyAPI:
     def _is_retryable_error(self, status_code: int) -> bool:
         return status_code in RETRYABLE_HTTP_CODES
 
+    def _handle_response_status(self, response, endpoint: str):
+        if response.status == HTTP_UNAUTHORIZED:
+            logger.error("API 认证失败")
+            raise AuthenticationError("Misskey API 认证失败，请检查访问令牌")
+        elif response.status == HTTP_FORBIDDEN:
+            logger.error("API 权限不足")
+            raise AuthenticationError("Misskey API 权限不足，请求被拒绝")
+        elif response.status == HTTP_TOO_MANY_REQUESTS:
+            raise APIRateLimitError("Misskey API 速率限制")
+        elif self._is_retryable_error(response.status):
+            return "retryable"
+        else:
+            return "error"
+
+    async def _process_response(self, response, endpoint: str):
+        if response.status == HTTP_OK:
+            try:
+                result = await response.json()
+                logger.debug(f"Misskey API 请求成功: {endpoint}")
+                return result
+            except json.JSONDecodeError as e:
+                raise APIConnectionError("Misskey", f"API 返回无效 JSON: {e}")
+
+        status_result = self._handle_response_status(response, endpoint)
+        if status_result == "retryable":
+            error_text = await response.text()
+            raise APIConnectionError("Misskey", f"HTTP {response.status}: {error_text}")
+        else:
+            error_text = await response.text()
+            logger.error(f"API 请求失败: {response.status} - {error_text}")
+            raise APIConnectionError("Misskey", f"HTTP {response.status}: {error_text}")
+
     @retry_async(
         max_retries=API_MAX_RETRIES,
         retryable_exceptions=(aiohttp.ClientError, APIConnectionError),
@@ -86,34 +118,7 @@ class MisskeyAPI:
             async with session.post(
                 url, json=request_data, headers=self.headers
             ) as response:
-                if response.status == HTTP_OK:
-                    try:
-                        result = await response.json()
-                        logger.debug(f"Misskey API 请求成功: {endpoint}")
-                        return result
-                    except json.JSONDecodeError as e:
-                        raise APIConnectionError("Misskey", f"API 返回无效 JSON: {e}")
-
-                elif response.status == HTTP_UNAUTHORIZED:
-                    logger.error("API 认证失败")
-                    raise AuthenticationError("Misskey API 认证失败，请检查访问令牌")
-                elif response.status == HTTP_FORBIDDEN:
-                    logger.error("API 权限不足")
-                    raise AuthenticationError("Misskey API 权限不足，请求被拒绝")
-                elif response.status == HTTP_TOO_MANY_REQUESTS:
-                    raise APIRateLimitError("Misskey API 速率限制")
-                elif self._is_retryable_error(response.status):
-                    error_text = await response.text()
-                    raise APIConnectionError(
-                        "Misskey", f"HTTP {response.status}: {error_text}"
-                    )
-                else:
-                    error_text = await response.text()
-                    logger.error(f"API 请求失败: {response.status} - {error_text}")
-                    raise APIConnectionError(
-                        "Misskey", f"HTTP {response.status}: {error_text}"
-                    )
-
+                return await self._process_response(response, endpoint)
         except aiohttp.ClientError as e:
             logger.warning(f"网络错误: {e}")
             raise APIConnectionError("Misskey", f"网络连接失败: {e}")
@@ -134,6 +139,42 @@ class MisskeyAPI:
     ) -> Dict[str, Any]:
         return await self._make_request(endpoint, data)
 
+    def _determine_reply_visibility(
+        self, original_visibility: str, visibility: Optional[str]
+    ) -> str:
+        if visibility is None:
+            return original_visibility
+        visibility_priority = {
+            "specified": 0,
+            "followers": 1,
+            "home": 2,
+            "public": 3,
+        }
+        original_priority = visibility_priority.get(original_visibility, 3)
+        reply_priority = visibility_priority.get(visibility, 3)
+        if reply_priority > original_priority:
+            logger.debug(
+                f"调整回复可见性从 {visibility} 到 {original_visibility} 以匹配原笔记"
+            )
+            return original_visibility
+        return visibility
+
+    async def _get_visibility_for_reply(
+        self, reply_id: str, visibility: Optional[str]
+    ) -> str:
+        try:
+            original_note = await self.get_note(reply_id)
+            original_visibility = original_note.get("visibility", "public")
+            return self._determine_reply_visibility(original_visibility, visibility)
+        except (APIConnectionError, APIRateLimitError, ValueError) as e:
+            logger.warning(f"获取原笔记可见性失败，使用默认设置: {e}")
+            return visibility if visibility is not None else "home"
+
+    def _get_default_visibility(self) -> str:
+        if self.config:
+            return self.config.get("bot.auto_post.visibility", "public")
+        return "public"
+
     async def create_note(
         self,
         text: str,
@@ -141,35 +182,10 @@ class MisskeyAPI:
         reply_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         if reply_id:
-            try:
-                original_note = await self.get_note(reply_id)
-                original_visibility = original_note.get("visibility", "public")
-                if visibility is None:
-                    visibility = original_visibility
-                else:
-                    visibility_priority = {
-                        "specified": 0,
-                        "followers": 1,
-                        "home": 2,
-                        "public": 3,
-                    }
-                    original_priority = visibility_priority.get(original_visibility, 3)
-                    reply_priority = visibility_priority.get(visibility, 3)
-                    if reply_priority > original_priority:
-                        visibility = original_visibility
-                        logger.debug(
-                            f"调整回复可见性从 {visibility} 到 {original_visibility} 以匹配原笔记"
-                        )
-            except (APIConnectionError, APIRateLimitError, ValueError) as e:
-                logger.warning(f"获取原笔记可见性失败，使用默认设置: {e}")
-                if visibility is None:
-                    visibility = "home"
+            visibility = await self._get_visibility_for_reply(reply_id, visibility)
         else:
             if visibility is None:
-                if self.config:
-                    visibility = self.config.get("bot.auto_post.visibility", "public")
-                else:
-                    visibility = "public"
+                visibility = self._get_default_visibility()
         data = {
             "text": text,
             "visibility": visibility,
