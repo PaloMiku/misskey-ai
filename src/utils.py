@@ -4,43 +4,28 @@
 import os
 import asyncio
 import platform
-import random
-from functools import wraps
-from typing import Dict, Any, Callable, Awaitable, TypeVar, Optional
+from typing import Dict, Any, Optional
 
 import psutil
 from loguru import logger
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    retry_if_exception_type,
+)
 
-T = TypeVar("T")
 
+def retry_async(max_retries=3, retryable_exceptions=None):
+    def _before_retry_log(retry_state):
+        logger.info(f"第{retry_state.attempt_number}次重试...")
 
-def retry_async(
-    max_retries: int = 3,
-    base_delay: float = 1.0,
-    max_delay: float = 60.0,
-    backoff_factor: float = 2.0,
-    retryable_exceptions: Optional[tuple[type[Exception], ...]] = None,
-):
-    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
-        @wraps(func)
-        async def wrapper(*args, **kwargs) -> T:
-            last_error = None
-            for attempt in range(max_retries):
-                try:
-                    return await func(*args, **kwargs)
-                except Exception as e:
-                    last_error = e
-                    if retryable_exceptions and not isinstance(e, retryable_exceptions):
-                        raise
-                    if attempt < max_retries - 1:
-                        delay = min(base_delay * (backoff_factor**attempt), max_delay)
-                        jitter = delay * 0.25 * (2 * random.random() - 1)
-                        await asyncio.sleep(max(0.1, delay + jitter))
-            raise last_error
-
-        return wrapper
-
-    return decorator
+    kwargs = {
+        "stop": stop_after_attempt(max_retries),
+        "before": _before_retry_log,
+    }
+    if retryable_exceptions:
+        kwargs["retry"] = retry_if_exception_type(retryable_exceptions)
+    return retry(**kwargs)
 
 
 def get_system_info() -> Dict[str, Any]:
