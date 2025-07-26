@@ -27,10 +27,8 @@ from .exceptions import (
     WebSocketConnectionError,
 )
 from .constants import (
-    MAX_PROCESSED_ITEMS_CACHE,
-    WS_MAX_RECONNECT_DELAY,
-    WS_MAX_RECONNECT_ATTEMPTS,
-    WS_RECONNECT_DELAY,
+    MAX_CACHE,
+    WS_MAX_RETRIES,
     ERROR_MESSAGES,
     DEFAULT_ERROR_MESSAGE,
     ConfigKeys,
@@ -80,8 +78,8 @@ class MisskeyBot:
         self.plugin_manager = PluginManager(
             config, persistence=self.persistence, validator=self.validator
         )
-        self.processed_mentions = LRUCache(maxsize=MAX_PROCESSED_ITEMS_CACHE)
-        self.processed_messages = LRUCache(maxsize=MAX_PROCESSED_ITEMS_CACHE)
+        self.processed_mentions = LRUCache(maxsize=MAX_CACHE)
+        self.processed_messages = LRUCache(maxsize=MAX_CACHE)
         self.last_auto_post_time = datetime.now(timezone.utc) - timedelta(hours=24)
         self.posts_today = 0
         self.today = datetime.now(timezone.utc).date()
@@ -106,14 +104,10 @@ class MisskeyBot:
 
     async def _load_recent_processed_items(self) -> None:
         try:
-            recent_mentions = await self.persistence.get_recent_mentions(
-                MAX_PROCESSED_ITEMS_CACHE
-            )
+            recent_mentions = await self.persistence.get_recent_mentions(MAX_CACHE)
             for mention in recent_mentions:
                 self.processed_mentions[mention["note_id"]] = True
-            recent_messages = await self.persistence.get_recent_messages(
-                MAX_PROCESSED_ITEMS_CACHE
-            )
+            recent_messages = await self.persistence.get_recent_messages(MAX_CACHE)
             for message in recent_messages:
                 self.processed_messages[message["message_id"]] = True
             logger.debug(
@@ -241,9 +235,7 @@ class MisskeyBot:
 
     async def _start_websocket(self) -> None:
         @retry_async(
-            max_retries=WS_MAX_RECONNECT_ATTEMPTS,
-            base_delay=WS_RECONNECT_DELAY,
-            max_delay=WS_MAX_RECONNECT_DELAY,
+            max_retries=WS_MAX_RETRIES,
         )
         async def websocket_connect():
             await self.streaming.connect()

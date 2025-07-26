@@ -13,7 +13,7 @@ from loguru import logger
 
 from .exceptions import WebSocketConnectionError
 from .interfaces import IStreamingClient
-from .constants import WS_HEARTBEAT_INTERVAL, MAX_PROCESSED_ITEMS_CACHE
+from .constants import WS_HEARTBEAT_INTERVAL, WS_TIMEOUT, MAX_CACHE
 
 
 class ChannelType(Enum):
@@ -31,7 +31,7 @@ class StreamingClient(IStreamingClient):
         self.channels: Dict[str, Dict[str, Any]] = {}
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.running = False
-        self.processed_events = LRUCache(maxsize=MAX_PROCESSED_ITEMS_CACHE)
+        self.processed_events = LRUCache(maxsize=MAX_CACHE)
 
     async def __aenter__(self):
         return self
@@ -145,7 +145,8 @@ class StreamingClient(IStreamingClient):
         safe_url = f"{self.instance_url.replace('https://', 'wss://').replace('http://', 'ws://')}/streaming"
         logger.debug(f"连接 WebSocket: {safe_url}")
         if self.session is None:
-            self.session = aiohttp.ClientSession()
+            timeout = aiohttp.ClientTimeout(total=WS_TIMEOUT)
+            self.session = aiohttp.ClientSession(timeout=timeout)
         try:
             self.ws_connection = await self.session.ws_connect(ws_url)
             logger.debug(f"WebSocket 连接成功: {safe_url}")
