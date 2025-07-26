@@ -19,7 +19,7 @@ def retry_async(
     base_delay: float = 1.0,
     max_delay: float = 60.0,
     backoff_factor: float = 2.0,
-    retryable_exceptions: tuple = (Exception,),
+    retryable_exceptions: Optional[tuple[type[Exception], ...]] = None,
 ):
     def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
         @wraps(func)
@@ -30,7 +30,7 @@ def retry_async(
                     return await func(*args, **kwargs)
                 except Exception as e:
                     last_error = e
-                    if not isinstance(e, retryable_exceptions):
+                    if retryable_exceptions and not isinstance(e, retryable_exceptions):
                         raise
                     if attempt < max_retries - 1:
                         delay = min(base_delay * (backoff_factor**attempt), max_delay)
