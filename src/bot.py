@@ -223,6 +223,7 @@ class MisskeyBot:
             self.tasks = []
             await self.streaming.close()
             await self.misskey.close()
+            await self.deepseek.close()
             await self.persistence.close()
             self.processed_mentions.clear()
             self.processed_messages.clear()

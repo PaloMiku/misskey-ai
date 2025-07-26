@@ -19,6 +19,14 @@ class PluginBase(IPlugin):
         self.priority = config.get("priority", 0)
         self._utils = utils_provider or {}
 
+    async def __aenter__(self):
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.cleanup()
+        return False
+
     @abstractmethod
     async def initialize(self) -> bool:
         pass

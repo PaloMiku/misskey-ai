@@ -31,6 +31,13 @@ class PluginManager:
         self.persistence = persistence
         self.validator = validator or Validator()
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.cleanup_plugins()
+        return False
+
     async def load_plugins(self) -> None:
         if not self.plugins_dir.exists():
             logger.info(f"插件目录不存在: {self.plugins_dir}")

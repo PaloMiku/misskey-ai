@@ -120,13 +120,14 @@ class DeepSeekAPI(ITextGenerator):
         )
         return generated_text
 
-    def __enter__(self):
+    async def __aenter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+        return False
 
-    def close(self):
+    async def close(self):
         if hasattr(self, "client") and self.client:
             self.client.close()
             logger.debug("DeepSeek API 客户端连接已关闭")
