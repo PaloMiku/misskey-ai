@@ -14,6 +14,7 @@ from .config import Config
 from .bot import MisskeyBot
 from .utils import log_system_info, monitor_memory_usage
 from .exceptions import ConfigurationError, APIConnectionError, AuthenticationError
+from .constants import ConfigKeys
 
 bot: Optional[MisskeyBot] = None
 tasks: List[asyncio.Task] = []
@@ -27,11 +28,11 @@ async def main() -> None:
     load_dotenv()
     config = Config()
     await config.load()
-    log_path = Path(config.get("log.path"))
-    log_path.mkdir(exist_ok=True)
-    log_level = config.get("log.level")
+    log_path = Path(config.get(ConfigKeys.LOG_PATH))
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_level = config.get(ConfigKeys.LOG_LEVEL)
     logger.add(
-        log_path / "misskey_ai.log",
+        log_path,
         level=log_level,
     )
     await log_system_info()

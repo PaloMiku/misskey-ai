@@ -1,3 +1,27 @@
+class ConfigKeys:
+    MISSKEY_INSTANCE_URL = "misskey.instance_url"
+    MISSKEY_ACCESS_TOKEN = "misskey.access_token"
+    DEEPSEEK_API_KEY = "deepseek.api_key"
+    DEEPSEEK_MODEL = "deepseek.model"
+    DEEPSEEK_API_BASE = "deepseek.api_base"
+    DEEPSEEK_MAX_TOKENS = "deepseek.max_tokens"
+    DEEPSEEK_TEMPERATURE = "deepseek.temperature"
+    BOT_SYSTEM_PROMPT = "bot.system_prompt"
+    BOT_AUTO_POST_ENABLED = "bot.auto_post.enabled"
+    BOT_AUTO_POST_INTERVAL = "bot.auto_post.interval_minutes"
+    BOT_AUTO_POST_MAX_PER_DAY = "bot.auto_post.max_posts_per_day"
+    BOT_AUTO_POST_VISIBILITY = "bot.auto_post.visibility"
+    BOT_AUTO_POST_PROMPT = "bot.auto_post.prompt"
+    BOT_RESPONSE_MENTION_ENABLED = "bot.response.mention_enabled"
+    BOT_RESPONSE_CHAT_ENABLED = "bot.response.chat_enabled"
+    BOT_RESPONSE_CHAT_MEMORY = "bot.response.chat_memory"
+    BOT_RESPONSE_POLLING_INTERVAL = "bot.response.polling_interval"
+    DB_PATH = "db.path"
+    DB_CLEANUP_DAYS = "db.cleanup_days"
+    LOG_PATH = "log.path"
+    LOG_LEVEL = "log.level"
+
+
 HTTP_OK = 200
 HTTP_UNAUTHORIZED = 401
 HTTP_FORBIDDEN = 403

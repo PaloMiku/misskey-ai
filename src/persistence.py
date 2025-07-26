@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from loguru import logger
 
+from .config import Config
+from .constants import ConfigKeys
+
 
 class ConnectionPool:
     def __init__(self, db_path: str, max_connections: int = 10):
@@ -57,7 +60,8 @@ class ConnectionPool:
 class PersistenceManager:
     def __init__(self, db_path: Optional[str] = None, max_connections: int = 10):
         if db_path is None:
-            db_path = "data/misskey_ai.db"
+            config = Config()
+            db_path = config._get_builtin_default(ConfigKeys.DB_PATH)
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(exist_ok=True)
         self._pool = ConnectionPool(str(self.db_path), max_connections)

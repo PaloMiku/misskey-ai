@@ -33,6 +33,7 @@ from .constants import (
     WS_RECONNECT_DELAY,
     ERROR_MESSAGES,
     DEFAULT_ERROR_MESSAGE,
+    ConfigKeys,
 )
 from .utils import retry_async, extract_user_id, extract_username
 
@@ -55,18 +56,18 @@ class MisskeyBot:
             self.validator = validator or Validator()
             self.misskey = api_client or MisskeyAPI(
                 validator=self.validator,
-                instance_url=config.get("misskey.instance_url"),
-                access_token=config.get("misskey.access_token"),
+                instance_url=config.get(ConfigKeys.MISSKEY_INSTANCE_URL),
+                access_token=config.get(ConfigKeys.MISSKEY_ACCESS_TOKEN),
             )
             self.streaming = streaming_client or StreamingClient(
-                instance_url=config.get("misskey.instance_url"),
-                access_token=config.get("misskey.access_token"),
+                instance_url=config.get(ConfigKeys.MISSKEY_INSTANCE_URL),
+                access_token=config.get(ConfigKeys.MISSKEY_ACCESS_TOKEN),
             )
             self.deepseek = text_generator or DeepSeekAPI(
                 validator=self.validator,
-                api_key=config.get("deepseek.api_key"),
-                model=config.get("deepseek.model"),
-                api_base=config.get("deepseek.api_base"),
+                api_key=config.get(ConfigKeys.DEEPSEEK_API_KEY),
+                model=config.get(ConfigKeys.DEEPSEEK_MODEL),
+                api_base=config.get(ConfigKeys.DEEPSEEK_API_BASE),
             )
             self.scheduler = AsyncIOScheduler()
             self._cleanup_needed = True
@@ -74,7 +75,7 @@ class MisskeyBot:
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"初始化失败: {e}")
             raise ConfigurationError(f"初始化失败: {e}")
-        db_path = config.get("persistence.db_path")
+        db_path = config.get(ConfigKeys.DB_PATH)
         self.persistence = PersistenceManager(db_path)
         self.plugin_manager = PluginManager(
             config, persistence=self.persistence, validator=self.validator
@@ -84,7 +85,7 @@ class MisskeyBot:
         self.last_auto_post_time = datetime.now(timezone.utc) - timedelta(hours=24)
         self.posts_today = 0
         self.today = datetime.now(timezone.utc).date()
-        self.system_prompt = config.get("bot.system_prompt", "")
+        self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
         self.running = False
         self.tasks = []
         self.error_counts = {
@@ -123,7 +124,7 @@ class MisskeyBot:
 
     async def _cleanup_old_processed_items(self) -> None:
         try:
-            cleanup_days = self.config.get("db.cleanup_days")
+            cleanup_days = self.config.get(ConfigKeys.DB_CLEANUP_DAYS)
             deleted_count = await self.persistence.cleanup_old_records(cleanup_days)
             if deleted_count > 0:
                 logger.debug(f"已清理 {deleted_count} 条过期记录")
@@ -176,8 +177,8 @@ class MisskeyBot:
             minute=0,
             second=0,
         )
-        if self.config.get("bot.auto_post.enabled"):
-            interval_minutes = self.config.get("bot.auto_post.interval_minutes")
+        if self.config.get(ConfigKeys.BOT_AUTO_POST_ENABLED):
+            interval_minutes = self.config.get(ConfigKeys.BOT_AUTO_POST_INTERVAL)
             logger.info(f"自动发帖已启用，间隔: {interval_minutes} 分钟")
             self.scheduler.add_job(
                 self._auto_post,
@@ -288,10 +289,10 @@ class MisskeyBot:
             logger.error(f"清理 WebSocket 资源时出错: {e}")
 
     async def _poll_mentions(self) -> None:
-        base_delay = self.config.get("bot.response.polling_interval")
+        base_delay = self.config.get(ConfigKeys.BOT_RESPONSE_POLLING_INTERVAL)
 
         async def poll_once():
-            if self.config.get("bot.response.mention_enabled"):
+            if self.config.get(ConfigKeys.BOT_RESPONSE_MENTION_ENABLED):
                 mentions = await self.misskey.get_mentions(limit=100)
                 if mentions:
                     logger.debug(f"轮询获取到 {len(mentions)} 个提及")
@@ -311,7 +312,7 @@ class MisskeyBot:
                             logger.debug(f"提及已在数据库中标记为已处理: {mention_id}")
                     else:
                         logger.debug(f"提及已在缓存中: {mention_id}")
-            if self.config.get("bot.response.chat_enabled"):
+            if self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_ENABLED):
                 await self._poll_chat_messages()
             await asyncio.sleep(base_delay)
 
@@ -352,7 +353,7 @@ class MisskeyBot:
             logger.debug(f"轮询聊天详细错误: {e}", exc_info=True)
 
     async def _handle_mention(self, note: Dict[str, Any]) -> None:
-        if not self.config.get("bot.response.mention_enabled"):
+        if not self.config.get(ConfigKeys.BOT_RESPONSE_MENTION_ENABLED):
             return
         mention_data = self._parse_mention_data(note)
         if not mention_data["mention_id"]:
@@ -480,7 +481,7 @@ class MisskeyBot:
             logger.error(f"发送错误回复失败: {reply_error}")
 
     async def _handle_message(self, message: Dict[str, Any]) -> None:
-        if not self.config.get("bot.response.chat_enabled"):
+        if not self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_ENABLED):
             return
         message_id = message.get("id")
         if not message_id:
@@ -572,7 +573,7 @@ class MisskeyBot:
     ) -> List[Dict[str, str]]:
         try:
             if limit is None:
-                limit = self.config.get("bot.response.chat_memory", 10)
+                limit = self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
             messages = await self.misskey.get_messages(user_id, limit=limit)
             chat_history = []
             for msg in reversed(messages):
@@ -595,7 +596,7 @@ class MisskeyBot:
         try:
             if not self._check_auto_post_limits():
                 return
-            max_posts = self.config.get("bot.auto_post.max_posts_per_day")
+            max_posts = self.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
 
             def log_post_success(post_content: str) -> None:
                 logger.info(f"自动发帖成功: {self._format_log_text(post_content)}")
@@ -623,7 +624,7 @@ class MisskeyBot:
         current_date = datetime.now(timezone.utc).date()
         if current_date != self.today:
             self._reset_daily_post_count()
-        max_posts = self.config.get("bot.auto_post.max_posts_per_day")
+        max_posts = self.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
         if self.posts_today >= max_posts:
             logger.debug(f"今日发帖数量已达上限 ({max_posts})，跳过自动发帖")
             return False
@@ -636,7 +637,7 @@ class MisskeyBot:
             if result and result.get("content"):
                 post_content = result.get("content")
                 visibility = result.get(
-                    "visibility", self.config.get("bot.auto_post.visibility")
+                    "visibility", self.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
                 )
                 await self.misskey.create_note(post_content, visibility=visibility)
                 self.posts_today += 1
@@ -660,7 +661,7 @@ class MisskeyBot:
                     f"插件 {result.get('plugin_name')} 请求修改提示词: {plugin_prompt}"
                 )
         post_prompt = self.config.get(
-            "bot.auto_post.prompt", "生成一篇有趣、有见解的社交媒体帖子。"
+            ConfigKeys.BOT_AUTO_POST_PROMPT, "生成一篇有趣、有见解的社交媒体帖子。"
         )
         ai_config = self._ai_config
         try:
@@ -684,7 +685,7 @@ class MisskeyBot:
         except ValueError as e:
             logger.warning(f"自动发帖失败: {e}，跳过本次发帖")
             return
-        visibility = self.config.get("bot.auto_post.visibility")
+        visibility = self.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
         await self.misskey.create_note(post_content, visibility=visibility)
         self.posts_today += 1
         self.last_auto_post_time = datetime.now(timezone.utc)
@@ -730,8 +731,8 @@ class MisskeyBot:
     @property
     def _ai_config(self) -> Dict[str, Any]:
         return {
-            "max_tokens": self.config.get("deepseek.max_tokens"),
-            "temperature": self.config.get("deepseek.temperature"),
+            "max_tokens": self.config.get(ConfigKeys.DEEPSEEK_MAX_TOKENS),
+            "temperature": self.config.get(ConfigKeys.DEEPSEEK_TEMPERATURE),
         }
 
     async def _mark_processed(

@@ -240,7 +240,7 @@ class DeepSeekAPI(ITextGenerator):
         self,
         original_text: str,
         system_prompt: str,
-        max_tokens: int = 300,
+        max_tokens: int = 1000,
         temperature: float = 0.8,
     ) -> str:
         reply_prompt = original_text
