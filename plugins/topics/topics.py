@@ -10,8 +10,14 @@ from src.plugin_base import PluginBase
 class TopicsPlugin(PluginBase):
     description = "主题插件，为自动发帖插入按顺序循环的主题关键词"
 
-    def __init__(self, name: str, config: Dict[str, Any], persistence_manager):
-        super().__init__(config)
+    def __init__(
+        self,
+        name: str,
+        config: Dict[str, Any],
+        persistence_manager,
+        utils_provider=None,
+    ):
+        super().__init__(config, utils_provider)
         self.name = name
         self.persistence_manager = persistence_manager
         self.prefix_template = config.get("prefix_template", "以{topic}为主题，")

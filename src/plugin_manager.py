@@ -11,15 +11,25 @@ from loguru import logger
 
 from .plugin_base import PluginBase
 from .config import Config
+from .validator import Validator
+from .interfaces import IValidator
+from . import utils
 
 
 class PluginManager:
-    def __init__(self, config: Config, plugins_dir: str = "plugins", persistence=None):
+    def __init__(
+        self,
+        config: Config,
+        plugins_dir: str = "plugins",
+        persistence=None,
+        validator: Optional[IValidator] = None,
+    ):
         self.config = config
         self.plugins_dir = Path(plugins_dir)
         self.plugins: Dict[str, PluginBase] = {}
         self.plugin_configs: Dict[str, Dict[str, Any]] = {}
         self.persistence = persistence
+        self.validator = validator or Validator()
 
     async def load_plugins(self) -> None:
         if not self.plugins_dir.exists():
@@ -103,14 +113,36 @@ class PluginManager:
     def _create_plugin_instance(self, plugin_class, plugin_name, plugin_config):
         import inspect
 
+        utils_provider = {
+            "extract_username": utils.extract_username,
+            "extract_user_id": utils.extract_user_id,
+        }
+
         sig = inspect.signature(plugin_class.__init__)
         params = list(sig.parameters.keys())[1:]
         if "name" in params and "persistence_manager" in params:
-            return plugin_class(plugin_name, plugin_config, self.persistence)
+            if "validator" in params:
+                return plugin_class(
+                    plugin_name, plugin_config, self.persistence, self.validator
+                )
+            elif "utils_provider" in params:
+                return plugin_class(
+                    plugin_name, plugin_config, self.persistence, utils_provider
+                )
+            else:
+                return plugin_class(plugin_name, plugin_config, self.persistence)
         elif "name" in params:
-            return plugin_class(plugin_name, plugin_config)
+            if "validator" in params:
+                return plugin_class(plugin_name, plugin_config, self.validator)
+            elif "utils_provider" in params:
+                return plugin_class(plugin_name, plugin_config, utils_provider)
+            else:
+                return plugin_class(plugin_name, plugin_config)
         else:
-            plugin_instance = plugin_class(plugin_config)
+            if "validator" in params:
+                plugin_instance = plugin_class(plugin_config, self.validator)
+            else:
+                plugin_instance = plugin_class(plugin_config, utils_provider)
             if hasattr(plugin_instance, "set_persistence") and self.persistence:
                 plugin_instance.set_persistence(self.persistence)
             return plugin_instance

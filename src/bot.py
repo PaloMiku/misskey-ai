@@ -17,6 +17,8 @@ from .misskey_api import MisskeyAPI
 from .streaming import StreamingClient
 from .persistence import PersistenceManager
 from .plugin_manager import PluginManager
+from .validator import Validator
+from .interfaces import IValidator, ITextGenerator, IAPIClient, IStreamingClient
 from .exceptions import (
     ConfigurationError,
     APIConnectionError,
@@ -36,24 +38,32 @@ from .utils import retry_async, extract_user_id, extract_username
 
 
 class MisskeyBot:
-    def __init__(self, config: Config):
+    def __init__(
+        self,
+        config: Config,
+        validator: Optional[IValidator] = None,
+        text_generator: Optional[ITextGenerator] = None,
+        api_client: Optional[IAPIClient] = None,
+        streaming_client: Optional[IStreamingClient] = None,
+    ):
         if not isinstance(config, Config):
             raise ValueError("配置参数必须是 Config 类型")
         self.config = config
         self.startup_time = datetime.now(timezone.utc)
         logger.debug(f"机器人启动时间 (UTC): {self.startup_time.isoformat()}")
         try:
-            self.misskey = MisskeyAPI(
-                config=config,
+            self.validator = validator or Validator()
+            self.misskey = api_client or MisskeyAPI(
+                validator=self.validator,
                 instance_url=config.get("misskey.instance_url"),
                 access_token=config.get("misskey.access_token"),
             )
-            self.streaming = StreamingClient(
+            self.streaming = streaming_client or StreamingClient(
                 instance_url=config.get("misskey.instance_url"),
                 access_token=config.get("misskey.access_token"),
             )
-            self.deepseek = DeepSeekAPI(
-                config=config,
+            self.deepseek = text_generator or DeepSeekAPI(
+                validator=self.validator,
                 api_key=config.get("deepseek.api_key"),
                 model=config.get("deepseek.model"),
                 api_base=config.get("deepseek.api_base"),
@@ -66,7 +76,9 @@ class MisskeyBot:
             raise ConfigurationError(f"初始化失败: {e}")
         db_path = config.get("persistence.db_path")
         self.persistence = PersistenceManager(db_path)
-        self.plugin_manager = PluginManager(config, persistence=self.persistence)
+        self.plugin_manager = PluginManager(
+            config, persistence=self.persistence, validator=self.validator
+        )
         self.processed_mentions = LRUCache(maxsize=MAX_PROCESSED_ITEMS_CACHE)
         self.processed_messages = LRUCache(maxsize=MAX_PROCESSED_ITEMS_CACHE)
         self.last_auto_post_time = datetime.now(timezone.utc) - timedelta(hours=24)
@@ -588,9 +600,15 @@ class MisskeyBot:
                 logger.info(f"自动发帖成功: {self._format_log_text(post_content)}")
                 logger.info(f"今日发帖计数: {self.posts_today}/{max_posts}")
 
-            if await self._try_plugin_auto_post(log_post_success):
+            plugin_results = await self.plugin_manager.on_auto_post()
+
+            if await self._try_plugin_auto_post_with_results(
+                plugin_results, log_post_success
+            ):
                 return
-            await self._generate_ai_auto_post(log_post_success)
+            await self._generate_ai_auto_post_with_results(
+                plugin_results, log_post_success
+            )
         except (
             APIConnectionError,
             APIRateLimitError,
@@ -610,8 +628,9 @@ class MisskeyBot:
             return False
         return True
 
-    async def _try_plugin_auto_post(self, log_post_success) -> bool:
-        plugin_results = await self.plugin_manager.on_auto_post()
+    async def _try_plugin_auto_post_with_results(
+        self, plugin_results, log_post_success
+    ) -> bool:
         for result in plugin_results:
             if result and result.get("content"):
                 post_content = result.get("content")
@@ -625,8 +644,9 @@ class MisskeyBot:
                 return True
         return False
 
-    async def _generate_ai_auto_post(self, log_post_success) -> None:
-        plugin_results = await self.plugin_manager.on_auto_post()
+    async def _generate_ai_auto_post_with_results(
+        self, plugin_results, log_post_success
+    ) -> None:
         plugin_prompt = ""
         timestamp_override = None
         for result in plugin_results:

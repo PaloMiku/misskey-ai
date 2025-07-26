@@ -9,8 +9,8 @@ from src.plugin_base import PluginBase
 class ExamplePlugin(PluginBase):
     description = "示例插件，展示插件系统的基本用法"
 
-    def __init__(self, config: Dict[str, Any]):
-        super().__init__(config)
+    def __init__(self, config: Dict[str, Any], utils_provider=None):
+        super().__init__(config, utils_provider)
         self.greeting_enabled = config.get("greeting_enabled", True)
         self.auto_post_enabled = config.get("auto_post_enabled", False)
 

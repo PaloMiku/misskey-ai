@@ -18,21 +18,22 @@ from .constants import (
     API_MAX_RETRIES,
     API_TIMEOUT,
 )
+from .interfaces import IAPIClient, IValidator
 from .utils import retry_async
 
 
-class MisskeyAPI:
-    def __init__(self, config, instance_url: str, access_token: str):
-        self.config = config
+class MisskeyAPI(IAPIClient):
+    def __init__(self, validator: IValidator, instance_url: str, access_token: str):
+        self.validator = validator
         try:
-            self.instance_url = config._validate_url_param(
-                instance_url, "实例 URL"
-            ).rstrip("/")
-            self.access_token = config._validate_access_token_param(
+            self.instance_url = validator.validate_url(instance_url, "实例 URL").rstrip(
+                "/"
+            )
+            self.access_token = validator.validate_access_token(
                 access_token, "访问令牌"
             )
         except ValueError as e:
-            config._log_validation_error(e, "Misskey API 初始化")
+            validator.log_validation_error(e, "Misskey API 初始化")
             raise
         self.headers = {
             "Content-Type": "application/json",
@@ -105,7 +106,7 @@ class MisskeyAPI:
     async def _make_request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        self.config._validate_string_param(endpoint, "API 端点", min_length=1)
+        self.validator.validate_string(endpoint, "API 端点", min_length=1)
         if data is not None and not isinstance(data, dict):
             raise ValueError("请求数据必须是字典格式")
         session = await self._ensure_session()
@@ -171,8 +172,6 @@ class MisskeyAPI:
             return visibility if visibility is not None else "home"
 
     def _get_default_visibility(self) -> str:
-        if self.config:
-            return self.config.get("bot.auto_post.visibility", "public")
         return "public"
 
     async def create_note(

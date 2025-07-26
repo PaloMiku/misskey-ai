@@ -12,6 +12,7 @@ from cachetools import LRUCache
 from loguru import logger
 
 from .exceptions import WebSocketConnectionError
+from .interfaces import IStreamingClient
 from .constants import WS_HEARTBEAT_INTERVAL, MAX_PROCESSED_ITEMS_CACHE
 
 
@@ -19,7 +20,7 @@ class ChannelType(Enum):
     MAIN = "main"
 
 
-class StreamingClient:
+class StreamingClient(IStreamingClient):
     def __init__(self, instance_url: str, access_token: str):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token

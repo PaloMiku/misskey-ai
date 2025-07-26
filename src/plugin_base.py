@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from abc import abstractmethod
+from typing import Dict, Any, Optional, Callable
 from loguru import logger
-from .utils import extract_username
+from .interfaces import IPlugin
 
 
-class PluginBase(ABC):
-    def __init__(self, config: Dict[str, Any]):
+class PluginBase(IPlugin):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        utils_provider: Optional[Dict[str, Callable]] = None,
+    ):
         self.config = config
         self.name = self.__class__.__name__
         self.enabled = config.get("enabled", False)
         self.priority = config.get("priority", 0)
+        self._utils = utils_provider or {}
 
     @abstractmethod
     async def initialize(self) -> bool:
@@ -51,7 +56,15 @@ class PluginBase(ABC):
         logger.info(f"插件 {self.name} {'启用' if enabled else '禁用'}")
 
     def _extract_username(self, data: Dict[str, Any]) -> str:
-        return extract_username(data)
+        extract_func = self._utils.get("extract_username")
+        if extract_func:
+            return extract_func(data)
+        user_info = data.get("fromUser") or data.get("user", {})
+        return (
+            user_info.get("username", "unknown")
+            if isinstance(user_info, dict)
+            else "unknown"
+        )
 
     def _log_plugin_action(self, action: str, details: str = "") -> None:
         if details:

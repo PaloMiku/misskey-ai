@@ -2,23 +2,24 @@
 # -*- coding: utf-8 -*-
 
 import os
-import re
 from pathlib import Path
-from typing import Any, Dict, Optional, List, Tuple, TypeVar, Union
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
 import yaml
 from loguru import logger
 
 from .exceptions import ConfigurationError
+from .interfaces import IConfigProvider
+from .validator import Validator
 
 T = TypeVar("T")
 
 
-class Config:
+class Config(IConfigProvider):
     def __init__(self, config_path: Optional[str] = None):
         self.config_path = config_path or os.environ.get("CONFIG_PATH", "config.yaml")
         self.config: Dict[str, Any] = {}
+        self.validator = Validator()
 
     async def load(self) -> None:
         config_path = Path(self.config_path)
@@ -140,133 +141,25 @@ class Config:
         instance_url = self.get("misskey.instance_url")
         if instance_url:
             try:
-                self._validate_url_param(instance_url, "Misskey 实例 URL")
+                self.validator.validate_url(instance_url, "Misskey 实例 URL")
             except ValueError as e:
-                logger.error(str(e))
+                self.validator.log_validation_error(e, "配置验证")
                 raise
         deepseek_key = self.get("deepseek.api_key")
         if deepseek_key:
             try:
-                self._validate_api_key_param(deepseek_key, "DeepSeek API 密钥")
+                self.validator.validate_api_key(deepseek_key, "DeepSeek API 密钥")
             except ValueError as e:
-                logger.error(str(e))
+                self.validator.log_validation_error(e, "配置验证")
                 raise
         misskey_token = self.get("misskey.access_token")
         if misskey_token:
             try:
-                self._validate_access_token_param(misskey_token, "Misskey 访问令牌")
+                self.validator.validate_access_token(misskey_token, "Misskey 访问令牌")
             except ValueError as e:
-                logger.error(str(e))
+                self.validator.log_validation_error(e, "配置验证")
                 raise
         logger.debug("配置验证通过")
-
-    def _validate_api_params(
-        self,
-        params: Dict[str, Any],
-        required_params: list,
-        optional_params: Dict[str, Any] = None,
-    ) -> Dict[str, Any]:
-        validated = {}
-        for param in required_params:
-            if param not in params:
-                raise ValueError(f"缺少必需参数: {param}")
-            validated[param] = params[param]
-        if optional_params:
-            for param, default_value in optional_params.items():
-                validated[param] = params.get(param, default_value)
-        return validated
-
-    def _validate_string_param(
-        self, value: Any, param_name: str, min_length: int = 0, max_length: int = None
-    ) -> str:
-        if not isinstance(value, str):
-            raise ValueError(f"{param_name} 必须是字符串")
-        if len(value) < min_length:
-            raise ValueError(f"{param_name} 长度不能少于 {min_length} 个字符")
-        if max_length and len(value) > max_length:
-            raise ValueError(f"{param_name} 长度不能超过 {max_length} 个字符")
-        return value
-
-    def _validate_numeric_param(
-        self,
-        value: Any,
-        param_name: str,
-        min_value: Union[int, float] = None,
-        max_value: Union[int, float] = None,
-    ) -> Union[int, float]:
-        if not isinstance(value, (int, float)):
-            raise ValueError(f"{param_name} 必须是数字")
-        if min_value is not None and value < min_value:
-            raise ValueError(f"{param_name} 不能小于 {min_value}")
-        if max_value is not None and value > max_value:
-            raise ValueError(f"{param_name} 不能大于 {max_value}")
-        return value
-
-    def _validate_url_param(self, value: Any, param_name: str) -> str:
-        if not isinstance(value, str):
-            raise ValueError(f"{param_name} 必须是字符串")
-        try:
-            result = urlparse(value)
-            if not all([result.scheme, result.netloc]) or result.scheme not in [
-                "http",
-                "https",
-            ]:
-                raise ValueError(f"{param_name} 必须是有效的 URL")
-        except Exception:
-            raise ValueError(f"{param_name} 必须是有效的 URL")
-        return value
-
-    def _validate_token_param(self, value: Any, param_name: str) -> str:
-        if not isinstance(value, str):
-            raise ValueError(f"{param_name} 必须是字符串")
-        if not value.strip():
-            raise ValueError(f"{param_name} 不能为空")
-        return value.strip()
-
-    def _validate_api_key_param(self, value: Any, param_name: str) -> str:
-        if not value or not isinstance(value, str):
-            raise ValueError(f"{param_name} 必须是字符串")
-        value = value.strip()
-        if len(value) < 32 or len(value) > 64:
-            raise ValueError(f"{param_name} 长度必须在32-64个字符之间")
-        placeholder_patterns = [
-            r"your.*key.*here",
-            r"replace.*with.*key",
-            r"api.*key.*placeholder",
-            r"sk-[a-zA-Z0-9]{20,}",
-        ]
-        value_lower = value.lower()
-        for pattern in placeholder_patterns[:-1]:
-            if re.search(pattern, value_lower):
-                raise ValueError(f"{param_name} 不能是占位符")
-        return value
-
-    def _validate_access_token_param(self, value: Any, param_name: str) -> str:
-        if not value or not isinstance(value, str):
-            raise ValueError(f"{param_name} 必须是字符串")
-        value = value.strip()
-        if len(value) < 32 or len(value) > 64:
-            raise ValueError(f"{param_name} 长度必须在32-64个字符之间")
-        if not re.match(r"^[a-zA-Z0-9]+$", value):
-            raise ValueError(f"{param_name} 只能包含字母和数字")
-        placeholder_patterns = [
-            r"your.*token.*here",
-            r"replace.*with.*token",
-            r"access.*token.*placeholder",
-            r"example.*token",
-            r"test.*token",
-        ]
-        value_lower = value.lower()
-        for pattern in placeholder_patterns:
-            if re.search(pattern, value_lower):
-                raise ValueError(f"{param_name} 不能是占位符")
-        return value
-
-    def _log_validation_error(self, error: Exception, context: str = "") -> None:
-        if context:
-            logger.error(f"参数验证失败 ({context}): {error}")
-        else:
-            logger.error(f"参数验证失败: {error}")
 
     def get(self, key: str, default: Any = None) -> Any:
         if key == "persistence.db_path":

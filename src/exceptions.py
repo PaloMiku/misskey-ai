@@ -47,21 +47,3 @@ class APIRateLimitError(MisskeyBotError):
             super().__init__(f"{service_name} API 速率限制，请在{retry_after}秒后重试")
         else:
             super().__init__(f"{service_name} API 速率限制")
-
-
-class MisskeyAPIError(MisskeyBotError):
-    def __init__(self, message: str, status_code: int = None):
-        self.status_code = status_code
-        if status_code:
-            super().__init__(f"Misskey API 错误 (HTTP {status_code}): {message}")
-        else:
-            super().__init__(f"Misskey API 错误: {message}")
-
-
-class DeepSeekAPIError(MisskeyBotError):
-    def __init__(self, message: str, error_code: str = None):
-        self.error_code = error_code
-        if error_code:
-            super().__init__(f"DeepSeek API 错误 ({error_code}): {message}")
-        else:
-            super().__init__(f"DeepSeek API 错误: {message}")
