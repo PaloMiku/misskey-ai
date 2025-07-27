@@ -89,18 +89,29 @@ class DeepSeekAPI(ITextGenerator):
             OSError,
         ),
     )
-    async def _call_api(
-        self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
+    async def _call_api_common(
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: int,
+        temperature: float,
+        call_type: str,
     ) -> str:
         try:
             response = await self._make_api_request(messages, max_tokens, temperature)
-            return self._process_api_response(response, "单轮文本")
+            return self._process_api_response(response, call_type)
         except BadRequestError as e:
             raise ValueError(f"API 请求参数错误: {e}")
         except AuthenticationError as e:
             raise CustomAuthError(f"DeepSeek API 认证失败: {e}")
         except (ValueError, TypeError, KeyError) as e:
             raise ValueError(f"API 响应数据格式错误: {e}")
+
+    async def _call_api(
+        self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
+    ) -> str:
+        return await self._call_api_common(
+            messages, max_tokens, temperature, "单轮文本"
+        )
 
     async def _make_api_request(
         self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
@@ -151,30 +162,13 @@ class DeepSeekAPI(ITextGenerator):
             self.validator.log_validation_error(e, "DeepSeek API 聊天验证")
             raise ValueError(f"聊天参数验证失败: {e}")
 
-    @retry_async(
-        max_retries=API_MAX_RETRIES,
-        retryable_exceptions=(
-            RateLimitError,
-            APITimeoutError,
-            Timeout,
-            APIError,
-            ConnectionError,
-            OSError,
-        ),
-    )
     async def _call_chat_api(
         self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
     ) -> str:
-        try:
-            response = await self._make_api_request(messages, max_tokens, temperature)
-            generated_text = self._process_api_response(response, "多轮对话")
-            return generated_text.strip()
-        except BadRequestError as e:
-            raise ValueError(f"API 请求参数错误: {e}")
-        except AuthenticationError as e:
-            raise CustomAuthError(f"DeepSeek API 认证失败: {e}")
-        except (ValueError, TypeError, KeyError) as e:
-            raise ValueError(f"API 响应数据格式错误: {e}")
+        result = await self._call_api_common(
+            messages, max_tokens, temperature, "多轮对话"
+        )
+        return result.strip()
 
     async def generate_text(
         self,
