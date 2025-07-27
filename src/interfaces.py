@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Callable, Awaitable, Union
+from typing import Dict, Any, Optional, Callable, Awaitable
 
 
 class IUtilsProvider(ABC):
@@ -47,35 +47,29 @@ class IConfigProvider(ABC):
 
 class IValidator(ABC):
     @abstractmethod
-    def validate_string(
-        self, value: Any, param_name: str, min_length: int = 0, max_length: int = None
-    ) -> str:
-        pass
-
-    @abstractmethod
-    def validate_numeric(
-        self,
-        value: Any,
-        param_name: str,
-        min_value: Union[int, float] = None,
-        max_value: Union[int, float] = None,
-    ) -> Union[int, float]:
-        pass
-
-    @abstractmethod
-    def validate_url(self, value: Any, param_name: str) -> str:
-        pass
-
-    @abstractmethod
-    def validate_api_key(self, value: Any, param_name: str) -> str:
-        pass
-
-    @abstractmethod
-    def validate_access_token(self, value: Any, param_name: str) -> str:
-        pass
-
-    @abstractmethod
     def log_validation_error(self, error: Exception, context: str = "") -> None:
+        pass
+
+    @abstractmethod
+    def validate_config(
+        self, misskey_data: Dict[str, Any], deepseek_data: Dict[str, Any]
+    ) -> tuple:
+        pass
+
+    @abstractmethod
+    def validate_misskey_config(self, misskey_data: Dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    def validate_deepseek_config(self, deepseek_data: Dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    def validate_text_generation(self, **kwargs) -> Any:
+        pass
+
+    @abstractmethod
+    def validate_chat_request(self, **kwargs) -> Any:
         pass
 
 

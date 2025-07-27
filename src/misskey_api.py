@@ -26,15 +26,13 @@ class MisskeyAPI(IAPIClient):
     def __init__(self, validator: IValidator, instance_url: str, access_token: str):
         self.validator = validator
         try:
-            self.instance_url = validator.validate_url(instance_url, "实例 URL").rstrip(
-                "/"
-            )
-            self.access_token = validator.validate_access_token(
-                access_token, "访问令牌"
-            )
-        except ValueError as e:
+            misskey_data = {"instance_url": instance_url, "access_token": access_token}
+            config = self.validator.validate_misskey_config(misskey_data)
+            self.instance_url = str(config.instance_url).rstrip("/")
+            self.access_token = config.access_token
+        except (ValueError, TypeError, AttributeError) as e:
             validator.log_validation_error(e, "Misskey API 初始化")
-            raise
+            raise ValueError(f"Misskey API 初始化失败: {e}")
         self.headers = {
             "Content-Type": "application/json",
             "User-Agent": "MisskeyBot/1.0",
@@ -106,7 +104,8 @@ class MisskeyAPI(IAPIClient):
     async def _make_request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        self.validator.validate_string(endpoint, "API 端点", min_length=1)
+        if not endpoint or not isinstance(endpoint, str) or len(endpoint.strip()) == 0:
+            raise ValueError("API 端点不能为空")
         if data is not None and not isinstance(data, dict):
             raise ValueError("请求数据必须是字典格式")
         session = await self._ensure_session()

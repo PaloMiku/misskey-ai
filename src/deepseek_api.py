@@ -36,13 +36,20 @@ class DeepSeekAPI(ITextGenerator):
     ):
         self.validator = validator
         try:
-            self.api_key = validator.validate_api_key(api_key, "API 密钥")
-            self.model = validator.validate_string(model, "模型名称", min_length=1)
-            api_base_url = api_base if api_base else "https://api.deepseek.com/v1"
-            self.api_base = validator.validate_url(api_base_url, "API base URL")
-        except ValueError as e:
+            deepseek_data = {
+                "api_key": api_key,
+                "model": model,
+                "api_base": api_base or "https://api.deepseek.com/v1",
+                "max_tokens": 1000,
+                "temperature": 0.8,
+            }
+            config = self.validator.validate_deepseek_config(deepseek_data)
+            self.api_key = config.api_key
+            self.model = config.model
+            self.api_base = str(config.api_base)
+        except (ValueError, TypeError, AttributeError) as e:
             validator.log_validation_error(e, "DeepSeek API 初始化")
-            raise
+            raise ValueError(f"DeepSeek API 初始化失败: {e}")
         try:
             self.client = openai.OpenAI(
                 api_key=self.api_key, base_url=self.api_base, timeout=API_TIMEOUT
@@ -60,18 +67,16 @@ class DeepSeekAPI(ITextGenerator):
         temperature: float,
     ) -> None:
         try:
-            self.validator.validate_string(prompt, "提示内容", min_length=1)
-            if system_prompt:
-                self.validator.validate_string(system_prompt, "系统提示", min_length=1)
-            self.validator.validate_numeric(
-                max_tokens, "max_tokens", min_value=1, max_value=4096
-            )
-            self.validator.validate_numeric(
-                temperature, "temperature", min_value=0, max_value=2
-            )
-        except ValueError as e:
+            request_data = {
+                "prompt": prompt,
+                "system_prompt": system_prompt,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+            self.validator.validate_text_generation(**request_data)
+        except (ValueError, TypeError, AttributeError) as e:
             self.validator.log_validation_error(e, "DeepSeek API 参数验证")
-            raise
+            raise ValueError(f"参数验证失败: {e}")
 
     @retry_async(
         max_retries=API_MAX_RETRIES,
@@ -135,19 +140,16 @@ class DeepSeekAPI(ITextGenerator):
     def _validate_chat_messages(
         self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
     ) -> None:
-        if not messages or not isinstance(messages, list):
-            raise ValueError("消息列表不能为空且必须是列表")
-        for i, msg in enumerate(messages):
-            if not isinstance(msg, dict):
-                raise ValueError(f"消息 {i} 必须是字典格式")
-            if "role" not in msg or "content" not in msg:
-                raise ValueError(f"消息 {i} 必须包含 'role' 和 'content' 字段")
-            if not isinstance(msg["content"], str) or len(msg["content"].strip()) == 0:
-                raise ValueError(f"消息 {i} 的内容不能为空")
-        self.validator.validate_numeric(max_tokens, "max_tokens", min_value=1)
-        self.validator.validate_numeric(
-            temperature, "temperature", min_value=0, max_value=2
-        )
+        try:
+            request_data = {
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+            self.validator.validate_chat_request(**request_data)
+        except (ValueError, TypeError, AttributeError) as e:
+            self.validator.log_validation_error(e, "DeepSeek API 聊天验证")
+            raise ValueError(f"聊天参数验证失败: {e}")
 
     @retry_async(
         max_retries=API_MAX_RETRIES,

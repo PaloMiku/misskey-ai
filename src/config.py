@@ -3,7 +3,7 @@
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TypeVar
+from typing import Any, Dict, Optional, TypeVar
 
 import yaml
 from loguru import logger
@@ -134,41 +134,23 @@ class Config(IConfigProvider):
         return config_path in prompt_configs
 
     def _validate_config(self) -> None:
-        required_configs: List[Tuple[str, str]] = [
-            (ConfigKeys.MISSKEY_INSTANCE_URL, "Misskey 实例 URL"),
-            (ConfigKeys.MISSKEY_ACCESS_TOKEN, "Misskey 访问令牌"),
-            (ConfigKeys.DEEPSEEK_API_KEY, "DeepSeek API 密钥"),
-        ]
-        missing_configs = []
-        for config_path, config_name in required_configs:
-            if not self.get(config_path):
-                missing_configs.append(config_name)
-        if missing_configs:
-            error_msg = f"缺少必要的配置项: {', '.join(missing_configs)}"
-            logger.error(error_msg)
-            raise ConfigurationError(error_msg)
-        instance_url = self.get(ConfigKeys.MISSKEY_INSTANCE_URL)
-        if instance_url:
-            try:
-                self.validator.validate_url(instance_url, "Misskey 实例 URL")
-            except ValueError as e:
-                self.validator.log_validation_error(e, "配置验证")
-                raise
-        deepseek_key = self.get(ConfigKeys.DEEPSEEK_API_KEY)
-        if deepseek_key:
-            try:
-                self.validator.validate_api_key(deepseek_key, "DeepSeek API 密钥")
-            except ValueError as e:
-                self.validator.log_validation_error(e, "配置验证")
-                raise
-        misskey_token = self.get(ConfigKeys.MISSKEY_ACCESS_TOKEN)
-        if misskey_token:
-            try:
-                self.validator.validate_access_token(misskey_token, "Misskey 访问令牌")
-            except ValueError as e:
-                self.validator.log_validation_error(e, "配置验证")
-                raise
-        logger.debug("配置验证通过")
+        try:
+            misskey_data = {
+                "instance_url": self.get(ConfigKeys.MISSKEY_INSTANCE_URL),
+                "access_token": self.get(ConfigKeys.MISSKEY_ACCESS_TOKEN),
+            }
+            deepseek_data = {
+                "api_key": self.get(ConfigKeys.DEEPSEEK_API_KEY),
+                "model": self.get(ConfigKeys.DEEPSEEK_MODEL),
+                "api_base": self.get(ConfigKeys.DEEPSEEK_API_BASE),
+                "max_tokens": self.get(ConfigKeys.DEEPSEEK_MAX_TOKENS),
+                "temperature": self.get(ConfigKeys.DEEPSEEK_TEMPERATURE),
+            }
+            self.validator.validate_config(misskey_data, deepseek_data)
+            logger.debug("配置验证通过")
+        except (ValueError, TypeError, AttributeError) as e:
+            self.validator.log_validation_error(e, "配置验证")
+            raise ConfigurationError(f"配置验证失败: {e}")
 
     def get(self, key: str, default: Any = None) -> Any:
         keys = key.split(".")
