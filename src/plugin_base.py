@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from abc import abstractmethod
+import pluggy
 from typing import Dict, Any, Optional, Callable
 from loguru import logger
 from .interfaces import IPlugin
+
+hookimpl = pluggy.HookimplMarker("misskey_ai")
 
 
 class PluginBase(IPlugin):
@@ -27,30 +29,39 @@ class PluginBase(IPlugin):
         await self.cleanup()
         return False
 
-    @abstractmethod
+    @hookimpl
     async def initialize(self) -> bool:
-        pass
+        return True
 
-    @abstractmethod
+    @hookimpl
     async def cleanup(self) -> None:
         pass
 
+    @hookimpl
     async def on_startup(self) -> None:
         pass
 
+    @hookimpl
     async def on_mention(
         self, _mention_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         return None
 
+    @hookimpl
     async def on_message(
         self, _message_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         return None
 
+    @hookimpl
     async def on_auto_post(self) -> Optional[Dict[str, Any]]:
         return None
 
+    @hookimpl
+    async def on_shutdown(self) -> None:
+        pass
+
+    @hookimpl
     def get_info(self) -> Dict[str, Any]:
         return {
             "name": self.name,

@@ -5,6 +5,7 @@ import sys
 import importlib
 import importlib.util
 import yaml
+import pluggy
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from loguru import logger
@@ -30,6 +31,8 @@ class PluginManager:
         self.plugin_configs: Dict[str, Dict[str, Any]] = {}
         self.persistence = persistence
         self.validator = validator or Validator()
+
+        self.pm = pluggy.PluginManager("misskey_ai")
 
     async def __aenter__(self):
         return self
@@ -88,6 +91,9 @@ class PluginManager:
             )
             self.plugins[plugin_dir.name] = plugin_instance
             self.plugin_configs[plugin_dir.name] = plugin_config
+
+            self.pm.register(plugin_instance)
+
             status = "启用" if plugin_instance.enabled else "禁用"
             logger.debug(f"已发现插件: {plugin_dir.name} (状态: {status})")
         except (ImportError, AttributeError, TypeError, OSError) as e:
@@ -197,6 +203,7 @@ class PluginManager:
 
     async def call_plugin_hook(self, hook_name: str, *args, **kwargs) -> List[Any]:
         results = []
+
         sorted_plugins = sorted(
             [(name, plugin) for name, plugin in self.plugins.items() if plugin.enabled],
             key=lambda x: x[1].priority,
