@@ -71,54 +71,28 @@ class TopicsPlugin(PluginBase):
             logger.warning(f"创建 topics 数据库表失败: {e}")
             raise
 
+    def _use_default_topics(self) -> None:
+        self.topics = ["科技", "生活", "学习", "思考", "创新"]
+        logger.info(f"使用默认主题关键词: {self.topics}")
+
     async def _load_topics(self) -> None:
         try:
             plugin_dir = Path(__file__).parent
             topics_file_path = plugin_dir / "topics.txt"
             if not topics_file_path.exists():
-                logger.warning(f"主题文件不存在: {topics_file_path}，将创建示例文件")
-                await self._create_example_topics_file(topics_file_path)
+                logger.warning(f"主题文件不存在: {topics_file_path}")
+                self._use_default_topics()
+                return
             with open(topics_file_path, "r", encoding="utf-8") as f:
                 self.topics = [line.strip() for line in f.readlines() if line.strip()]
             if not self.topics:
-                logger.warning("主题文件为空，将创建示例内容")
-                await self._create_example_topics_file(topics_file_path)
-                with open(topics_file_path, "r", encoding="utf-8") as f:
-                    self.topics = [
-                        line.strip() for line in f.readlines() if line.strip()
-                    ]
+                logger.warning("主题文件为空")
+                self._use_default_topics()
+                return
             logger.debug(f"成功加载 {len(self.topics)} 个主题关键词")
         except (OSError, IOError, UnicodeDecodeError) as e:
             logger.warning(f"加载主题文件失败: {e}")
-            self.topics = ["科技", "生活", "学习", "思考", "创新"]
-            logger.info(f"使用默认主题关键词: {self.topics}")
-
-    async def _create_example_topics_file(self, file_path: Path) -> None:
-        try:
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            example_topics = [
-                "科技",
-                "生活",
-                "学习",
-                "思考",
-                "创新",
-                "艺术",
-                "音乐",
-                "电影",
-                "读书",
-                "旅行",
-                "美食",
-                "健康",
-                "运动",
-                "自然",
-                "哲学",
-            ]
-            with open(file_path, "w", encoding="utf-8") as f:
-                for topic in example_topics:
-                    f.write(f"{topic}\n")
-            logger.info(f"已创建示例主题文件: {file_path}")
-        except (OSError, IOError, UnicodeEncodeError) as e:
-            logger.warning(f"创建示例主题文件失败: {e}")
+            self._use_default_topics()
 
     async def _get_next_topic(self) -> str:
         if not self.topics:
