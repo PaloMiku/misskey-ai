@@ -38,10 +38,10 @@ async def main() -> None:
     await log_system_info()
     logger.info("启动机器人...")
     try:
-        bot = MisskeyBot(config)
-        await bot.start()
-        await _setup_monitoring_and_signals()
-        await shutdown_event.wait()
+        async with MisskeyBot(config) as bot_instance:
+            bot = bot_instance
+            await _setup_monitoring_and_signals()
+            await shutdown_event.wait()
     except asyncio.CancelledError:
         pass
     except (
@@ -86,7 +86,6 @@ async def shutdown() -> None:
     _shutdown_called = True
     logger.info("关闭机器人...")
     await _cleanup_tasks()
-    await _stop_bot()
     if shutdown_event and not shutdown_event.is_set():
         shutdown_event.set()
     logger.info("机器人已关闭")
@@ -100,12 +99,6 @@ async def _cleanup_tasks() -> None:
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
     tasks = []
-
-
-async def _stop_bot() -> None:
-    global bot
-    if bot:
-        await bot.stop()
 
 
 if __name__ == "__main__":

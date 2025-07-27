@@ -95,11 +95,11 @@ class MisskeyBot:
         logger.info("机器人初始化完成")
 
     async def __aenter__(self):
+        await self.start()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if hasattr(self, "_cleanup_needed") and self._cleanup_needed:
-            await self.stop()
+        await self.stop()
         return False
 
     async def _load_recent_processed_items(self) -> None:

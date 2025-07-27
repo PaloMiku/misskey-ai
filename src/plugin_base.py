@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import asyncio
 import pluggy
 from typing import Dict, Any, Optional, Callable
 from loguru import logger
@@ -46,13 +47,22 @@ class PluginBase(IPlugin):
             self._utils = utils_provider or {}
         self.enabled = self.config.get("enabled", False)
         self.priority = self.config.get("priority", 0)
+        self._initialized = False
+        self._resources_to_cleanup = []
 
     async def __aenter__(self):
-        await self.initialize()
+        result = await self.initialize()
+        if result:
+            self._initialized = True
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.cleanup()
+        if self._resources_to_cleanup:
+            logger.warning(
+                f"插件 {self.name} 存在未清理的资源: {len(self._resources_to_cleanup)} 项"
+            )
+        self._initialized = False
         return False
 
     @hookimpl
@@ -61,7 +71,7 @@ class PluginBase(IPlugin):
 
     @hookimpl
     async def cleanup(self) -> None:
-        pass
+        await self._cleanup_registered_resources()
 
     @hookimpl
     async def on_startup(self) -> None:
@@ -122,3 +132,22 @@ class PluginBase(IPlugin):
         if "response" in response and not isinstance(response["response"], str):
             return False
         return True
+
+    def _register_resource(self, resource: Any, cleanup_method: str = "close") -> None:
+        self._resources_to_cleanup.append((resource, cleanup_method))
+
+    async def _cleanup_registered_resources(self) -> None:
+        for resource, cleanup_method in self._resources_to_cleanup:
+            try:
+                if hasattr(resource, cleanup_method):
+                    method = getattr(resource, cleanup_method)
+                    if asyncio.iscoroutinefunction(method):
+                        await method()
+                    else:
+                        method()
+            except (AttributeError, TypeError, RuntimeError, OSError) as e:
+                logger.error(f"插件 {self.name} 清理资源失败: {e}")
+        self._resources_to_cleanup.clear()
+
+    def _check_resource_leaks(self) -> bool:
+        return len(self._resources_to_cleanup) > 0

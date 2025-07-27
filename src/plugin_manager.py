@@ -131,7 +131,7 @@ class PluginManager:
             "extract_user_id": utils.extract_user_id,
         }
         context = PluginContext(
-            name=plugin_name,
+            name=plugin_name.capitalize(),
             config=plugin_config,
             persistence_manager=self.persistence,
             validator=self.validator,
@@ -148,12 +148,12 @@ class PluginManager:
                 if plugin.enabled:
                     success = await plugin.initialize()
                     if not success:
-                        logger.warning(f"插件 {plugin_name} 初始化失败")
+                        logger.warning(f"插件 {plugin.name} 初始化失败")
                         plugin.set_enabled(False)
                     else:
-                        logger.debug(f"插件 {plugin_name} 初始化成功")
+                        logger.debug(f"插件 {plugin.name} 初始化成功")
             except (ValueError, TypeError, AttributeError, OSError) as e:
-                logger.error(f"初始化插件 {plugin_name} 时出错: {e}")
+                logger.error(f"初始化插件 {plugin.name} 时出错: {e}")
                 plugin.set_enabled(False)
 
     async def cleanup_plugins(self) -> None:
@@ -161,9 +161,8 @@ class PluginManager:
             if plugin.enabled:
                 try:
                     await plugin.cleanup()
-                    logger.debug(f"插件 {plugin_name} 清理完成")
                 except (ValueError, TypeError, AttributeError, OSError) as e:
-                    logger.error(f"清理插件 {plugin_name} 时出错: {e}")
+                    logger.error(f"清理插件 {plugin.name} 时出错: {e}")
 
     async def on_startup(self) -> None:
         await self.call_plugin_hook("on_startup")
@@ -196,7 +195,7 @@ class PluginManager:
                     if result is not None:
                         results.append(result)
             except (ValueError, TypeError, AttributeError, OSError) as e:
-                logger.error(f"调用插件 {plugin_name} 的 {hook_name} hook 时出错: {e}")
+                logger.error(f"调用插件 {plugin.name} 的 {hook_name} hook 时出错: {e}")
         return results
 
     def get_plugin_info(self) -> List[Dict[str, Any]]:

@@ -33,13 +33,7 @@ class TopicsPlugin(PluginBase):
             return False
 
     async def cleanup(self) -> None:
-        pass
-
-    def _log_plugin_action(self, action: str, details: str = ""):
-        log_msg = f"Topics 插件{action}"
-        if details:
-            log_msg += f": {details}"
-        logger.info(log_msg)
+        await super().cleanup()
 
     async def on_auto_post(self) -> Optional[Dict[str, Any]]:
         try:
@@ -48,7 +42,7 @@ class TopicsPlugin(PluginBase):
             return {
                 "modify_prompt": True,
                 "plugin_prompt": plugin_prompt,
-                "plugin_name": "Topics",
+                "plugin_name": self.name,
             }
         except (ValueError, TypeError, AttributeError, OSError) as e:
             logger.error(f"Topics 插件处理自动发帖失败: {e}")

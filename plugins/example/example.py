@@ -15,13 +15,13 @@ class ExamplePlugin(PluginBase):
         self.auto_post_enabled = self.config.get("auto_post_enabled", False)
 
     async def initialize(self) -> bool:
-        logger.info(
-            f"Example 插件初始化完成，问候功能: {'启用' if self.greeting_enabled else '禁用'}"
+        self._log_plugin_action(
+            "初始化完成", f"问候功能: {'启用' if self.greeting_enabled else '禁用'}"
         )
         return True
 
     async def cleanup(self) -> None:
-        pass
+        await super().cleanup()
 
     async def on_mention(
         self, mention_data: Dict[str, Any]
@@ -35,7 +35,7 @@ class ExamplePlugin(PluginBase):
                 self._log_plugin_action("处理问候消息", f"来自 @{username}")
                 response = {
                     "handled": True,
-                    "plugin_name": "Example",
+                    "plugin_name": self.name,
                     "response": "你好！我是示例插件，很高兴见到你！",
                 }
                 if self._validate_plugin_response(response):
@@ -60,7 +60,7 @@ class ExamplePlugin(PluginBase):
                 self._log_plugin_action("处理测试消息", f"来自 @{username}")
                 response = {
                     "handled": True,
-                    "plugin_name": "Example",
+                    "plugin_name": self.name,
                     "response": "插件系统工作正常！这是来自示例插件的回复。",
                 }
                 if self._validate_plugin_response(response):

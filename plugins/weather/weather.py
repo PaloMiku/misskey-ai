@@ -27,12 +27,12 @@ class WeatherPlugin(PluginBase):
             self.enabled = False
             return False
         self.session = aiohttp.ClientSession()
-        logger.info("Weather 插件初始化完成")
+        self._register_resource(self.session, "close")
+        self._log_plugin_action("初始化完成")
         return True
 
     async def cleanup(self) -> None:
-        if self.session:
-            await self.session.close()
+        await super().cleanup()
 
     async def on_mention(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         try:
@@ -82,7 +82,7 @@ class WeatherPlugin(PluginBase):
         response_text = weather_info or f"抱歉，无法获取 {location} 的天气信息。"
         response = {
             "handled": True,
-            "plugin_name": "Weather",
+            "plugin_name": self.name,
             "response": response_text,
         }
         if self._validate_plugin_response(response):
