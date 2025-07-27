@@ -12,9 +12,9 @@ from src.plugin_base import PluginBase
 class WeatherPlugin(PluginBase):
     description = "天气插件，查询指定城市的天气信息"
 
-    def __init__(self, config: Dict[str, Any], utils_provider=None):
-        super().__init__(config, utils_provider)
-        self.api_key = config.get("api_key", "")
+    def __init__(self, context):
+        super().__init__(context)
+        self.api_key = self.config.get("api_key", "")
         if not self.api_key:
             self.enabled = False
         self.base_url = "https://api.openweathermap.org/data/2.5/weather"

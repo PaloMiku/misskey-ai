@@ -10,20 +10,12 @@ from src.plugin_base import PluginBase
 class TopicsPlugin(PluginBase):
     description = "主题插件，为自动发帖插入按顺序循环的主题关键词"
 
-    def __init__(
-        self,
-        name: str,
-        config: Dict[str, Any],
-        persistence_manager,
-        utils_provider=None,
-    ):
-        super().__init__(config, utils_provider)
-        self.name = name
-        self.persistence_manager = persistence_manager
-        self.prefix_template = config.get("prefix_template", "以{topic}为主题，")
-        self.start_line = config.get("start_line", 1)
+    def __init__(self, context):
+        super().__init__(context)
+        self.prefix_template = self.config.get("prefix_template", "以{topic}为主题，")
+        self.start_line = self.config.get("start_line", 1)
         self.topics = []
-        self.enabled = config.get("enabled", True)
+        self.enabled = self.config.get("enabled", True)
 
     async def initialize(self) -> bool:
         try:

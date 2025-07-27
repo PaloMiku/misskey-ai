@@ -124,41 +124,20 @@ class PluginManager:
         return None
 
     def _create_plugin_instance(self, plugin_class, plugin_name, plugin_config):
-        import inspect
+        from .plugin_base import PluginContext
 
         utils_provider = {
             "extract_username": utils.extract_username,
             "extract_user_id": utils.extract_user_id,
         }
-
-        sig = inspect.signature(plugin_class.__init__)
-        params = list(sig.parameters.keys())[1:]
-        if "name" in params and "persistence_manager" in params:
-            if "validator" in params:
-                return plugin_class(
-                    plugin_name, plugin_config, self.persistence, self.validator
-                )
-            elif "utils_provider" in params:
-                return plugin_class(
-                    plugin_name, plugin_config, self.persistence, utils_provider
-                )
-            else:
-                return plugin_class(plugin_name, plugin_config, self.persistence)
-        elif "name" in params:
-            if "validator" in params:
-                return plugin_class(plugin_name, plugin_config, self.validator)
-            elif "utils_provider" in params:
-                return plugin_class(plugin_name, plugin_config, utils_provider)
-            else:
-                return plugin_class(plugin_name, plugin_config)
-        else:
-            if "validator" in params:
-                plugin_instance = plugin_class(plugin_config, self.validator)
-            else:
-                plugin_instance = plugin_class(plugin_config, utils_provider)
-            if hasattr(plugin_instance, "set_persistence") and self.persistence:
-                plugin_instance.set_persistence(self.persistence)
-            return plugin_instance
+        context = PluginContext(
+            name=plugin_name,
+            config=plugin_config,
+            persistence_manager=self.persistence,
+            validator=self.validator,
+            utils_provider=utils_provider,
+        )
+        return plugin_class(context)
 
     async def _initialize_plugins(self) -> None:
         sorted_plugins = sorted(
