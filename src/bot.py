@@ -650,7 +650,7 @@ class MisskeyBot:
                 if result.get("timestamp"):
                     timestamp_override = result.get("timestamp")
                 logger.info(
-                    f"插件 {result.get('plugin_name')} 请求修改提示词: {plugin_prompt}"
+                    f"{result.get('plugin_name')} 插件请求修改提示词: {plugin_prompt}"
                 )
         post_prompt = self.config.get(
             ConfigKeys.BOT_AUTO_POST_PROMPT, "生成一篇有趣、有见解的社交媒体帖子。"

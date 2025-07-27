@@ -17,7 +17,7 @@ from tenacity import (
 
 def retry_async(max_retries=3, retryable_exceptions=None):
     def _retry_log(retry_state):
-        logger.info(f"第{retry_state.attempt_number}次重试...")
+        logger.info(f"第 {retry_state.attempt_number} 次重试...")
 
     kwargs = {
         "stop": stop_after_attempt(max_retries),
