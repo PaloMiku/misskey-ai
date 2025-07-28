@@ -45,34 +45,6 @@ class IConfigProvider(ABC):
         pass
 
 
-class IValidator(ABC):
-    @abstractmethod
-    def log_validation_error(self, error: Exception, context: str = "") -> None:
-        pass
-
-    @abstractmethod
-    def validate_config(
-        self, misskey_data: Dict[str, Any], deepseek_data: Dict[str, Any]
-    ) -> tuple:
-        pass
-
-    @abstractmethod
-    def validate_misskey_config(self, misskey_data: Dict[str, Any]) -> Any:
-        pass
-
-    @abstractmethod
-    def validate_deepseek_config(self, deepseek_data: Dict[str, Any]) -> Any:
-        pass
-
-    @abstractmethod
-    def validate_text_generation(self, **kwargs) -> Any:
-        pass
-
-    @abstractmethod
-    def validate_chat_request(self, **kwargs) -> Any:
-        pass
-
-
 class IAPIClient(ABC):
     @abstractmethod
     async def close(self) -> None:

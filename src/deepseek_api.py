@@ -12,7 +12,7 @@ from .exceptions import (
     APIRateLimitError,
     AuthenticationError as CustomAuthError,
 )
-from .interfaces import ITextGenerator, IValidator
+from .interfaces import ITextGenerator
 from .utils import retry_async
 from .constants import API_MAX_RETRIES, API_TIMEOUT
 
@@ -29,27 +29,13 @@ from openai import (
 class DeepSeekAPI(ITextGenerator):
     def __init__(
         self,
-        validator: IValidator,
         api_key: str,
         model: str = "deepseek-chat",
         api_base: Optional[str] = None,
     ):
-        self.validator = validator
-        try:
-            deepseek_data = {
-                "api_key": api_key,
-                "model": model,
-                "api_base": api_base or "https://api.deepseek.com/v1",
-                "max_tokens": 1000,
-                "temperature": 0.8,
-            }
-            config = self.validator.validate_deepseek_config(deepseek_data)
-            self.api_key = config.api_key
-            self.model = config.model
-            self.api_base = str(config.api_base)
-        except (ValueError, TypeError, AttributeError) as e:
-            validator.log_validation_error(e, "DeepSeek API 初始化")
-            raise ValueError(f"DeepSeek API 初始化失败: {e}")
+        self.api_key = api_key
+        self.model = model
+        self.api_base = api_base or "https://api.deepseek.com/v1"
         try:
             self.client = openai.OpenAI(
                 api_key=self.api_key, base_url=self.api_base, timeout=API_TIMEOUT
@@ -58,25 +44,6 @@ class DeepSeekAPI(ITextGenerator):
         except (ValueError, TypeError, OSError) as e:
             logger.error(f"创建 DeepSeek API 客户端失败: {e}")
             raise APIConnectionError("DeepSeek", f"客户端初始化失败: {e}")
-
-    def _validate_params(
-        self,
-        prompt: str,
-        system_prompt: Optional[str],
-        max_tokens: int,
-        temperature: float,
-    ) -> None:
-        try:
-            request_data = {
-                "prompt": prompt,
-                "system_prompt": system_prompt,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            self.validator.validate_text_generation(**request_data)
-        except (ValueError, TypeError, AttributeError) as e:
-            self.validator.log_validation_error(e, "DeepSeek API 参数验证")
-            raise ValueError(f"参数验证失败: {e}")
 
     @retry_async(
         max_retries=API_MAX_RETRIES,
@@ -148,20 +115,6 @@ class DeepSeekAPI(ITextGenerator):
             self.client.close()
             logger.debug("DeepSeek API 客户端连接已关闭")
 
-    def _validate_chat_messages(
-        self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
-    ) -> None:
-        try:
-            request_data = {
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            self.validator.validate_chat_request(**request_data)
-        except (ValueError, TypeError, AttributeError) as e:
-            self.validator.log_validation_error(e, "DeepSeek API 聊天验证")
-            raise ValueError(f"聊天参数验证失败: {e}")
-
     async def _call_chat_api(
         self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
     ) -> str:
@@ -177,7 +130,6 @@ class DeepSeekAPI(ITextGenerator):
         max_tokens: int = 1000,
         temperature: float = 0.8,
     ) -> str:
-        self._validate_params(prompt, system_prompt, max_tokens, temperature)
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt.strip()})
@@ -203,7 +155,6 @@ class DeepSeekAPI(ITextGenerator):
         max_tokens: int = 1000,
         temperature: float = 0.8,
     ) -> str:
-        self._validate_chat_messages(messages, max_tokens, temperature)
         try:
             return await self._call_chat_api(messages, max_tokens, temperature)
         except (

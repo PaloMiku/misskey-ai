@@ -18,13 +18,11 @@ class PluginContext:
         name: str,
         config: Dict[str, Any],
         persistence_manager=None,
-        validator=None,
         utils_provider=None,
     ):
         self.name = name
         self.config = config
         self.persistence_manager = persistence_manager
-        self.validator = validator
         self.utils_provider = utils_provider or {}
 
 
@@ -37,13 +35,11 @@ class PluginBase(IPlugin):
             self.config = context.config
             self.name = context.name
             self.persistence_manager = context.persistence_manager
-            self.validator = context.validator
             self._utils = context.utils_provider
         else:
             self.config = config_or_context
             self.name = self.__class__.__name__
             self.persistence_manager = None
-            self.validator = None
             self._utils = utils_provider or {}
         self.enabled = self.config.get("enabled", False)
         self.priority = self.config.get("priority", 0)
@@ -122,7 +118,7 @@ class PluginBase(IPlugin):
         else:
             logger.info(f"{self.name} 插件{action}")
 
-    def _validate_plugin_response(self, response: Dict[str, Any]) -> bool:
+    def _validate_plugin_response(self, response: Any) -> bool:
         if not isinstance(response, dict):
             return False
         if "handled" in response and not isinstance(response["handled"], bool):

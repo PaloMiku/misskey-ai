@@ -17,8 +17,7 @@ from .misskey_api import MisskeyAPI
 from .streaming import StreamingClient
 from .persistence import PersistenceManager
 from .plugin_manager import PluginManager
-from .validator import Validator
-from .interfaces import IValidator, ITextGenerator, IAPIClient, IStreamingClient
+from .interfaces import ITextGenerator, IAPIClient, IStreamingClient
 from .exceptions import (
     ConfigurationError,
     APIConnectionError,
@@ -40,7 +39,6 @@ class MisskeyBot:
     def __init__(
         self,
         config: Config,
-        validator: Optional[IValidator] = None,
         text_generator: Optional[ITextGenerator] = None,
         api_client: Optional[IAPIClient] = None,
         streaming_client: Optional[IStreamingClient] = None,
@@ -51,9 +49,7 @@ class MisskeyBot:
         self.startup_time = datetime.now(timezone.utc)
         logger.debug(f"机器人启动时间 (UTC): {self.startup_time.isoformat()}")
         try:
-            self.validator = validator or Validator()
             self.misskey = api_client or MisskeyAPI(
-                validator=self.validator,
                 instance_url=config.get(ConfigKeys.MISSKEY_INSTANCE_URL),
                 access_token=config.get(ConfigKeys.MISSKEY_ACCESS_TOKEN),
             )
@@ -62,7 +58,6 @@ class MisskeyBot:
                 access_token=config.get(ConfigKeys.MISSKEY_ACCESS_TOKEN),
             )
             self.deepseek = text_generator or DeepSeekAPI(
-                validator=self.validator,
                 api_key=config.get(ConfigKeys.DEEPSEEK_API_KEY),
                 model=config.get(ConfigKeys.DEEPSEEK_MODEL),
                 api_base=config.get(ConfigKeys.DEEPSEEK_API_BASE),
@@ -75,9 +70,7 @@ class MisskeyBot:
             raise ConfigurationError(f"初始化失败: {e}")
         db_path = config.get(ConfigKeys.DB_PATH)
         self.persistence = PersistenceManager(db_path)
-        self.plugin_manager = PluginManager(
-            config, persistence=self.persistence, validator=self.validator
-        )
+        self.plugin_manager = PluginManager(config, persistence=self.persistence)
         self.processed_mentions = LRUCache(maxsize=MAX_CACHE)
         self.processed_messages = LRUCache(maxsize=MAX_CACHE)
         self.last_auto_post_time = datetime.now(timezone.utc) - timedelta(hours=24)

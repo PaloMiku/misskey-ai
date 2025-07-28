@@ -12,8 +12,6 @@ from loguru import logger
 
 from .plugin_base import PluginBase
 from .config import Config
-from .validator import Validator
-from .interfaces import IValidator
 from . import utils
 
 
@@ -23,14 +21,12 @@ class PluginManager:
         config: Config,
         plugins_dir: str = "plugins",
         persistence=None,
-        validator: Optional[IValidator] = None,
     ):
         self.config = config
         self.plugins_dir = Path(plugins_dir)
         self.plugins: Dict[str, PluginBase] = {}
         self.plugin_configs: Dict[str, Dict[str, Any]] = {}
         self.persistence = persistence
-        self.validator = validator or Validator()
 
         self.pm = pluggy.PluginManager("misskey_ai")
 
@@ -120,7 +116,7 @@ class PluginManager:
                 and attr is not PluginBase
             ):
                 return attr
-        logger.warning(f"插件 {plugin_name} 中未找到有效的插件类")
+        logger.warning(f"插件 {plugin_name.capitalize()} 中未找到有效的插件类")
         return None
 
     def _create_plugin_instance(self, plugin_class, plugin_name, plugin_config):
@@ -134,7 +130,6 @@ class PluginManager:
             name=plugin_name.capitalize(),
             config=plugin_config,
             persistence_manager=self.persistence,
-            validator=self.validator,
             utils_provider=utils_provider,
         )
         return plugin_class(context)
@@ -143,7 +138,7 @@ class PluginManager:
         sorted_plugins = sorted(
             self.plugins.items(), key=lambda x: x[1].priority, reverse=True
         )
-        for plugin_name, plugin in sorted_plugins:
+        for _, plugin in sorted_plugins:
             try:
                 if plugin.enabled:
                     success = await plugin.initialize()
@@ -157,7 +152,7 @@ class PluginManager:
                 plugin.set_enabled(False)
 
     async def cleanup_plugins(self) -> None:
-        for plugin_name, plugin in self.plugins.items():
+        for _, plugin in self.plugins.items():
             if plugin.enabled:
                 try:
                     await plugin.cleanup()
@@ -187,7 +182,7 @@ class PluginManager:
             key=lambda x: x[1].priority,
             reverse=True,
         )
-        for plugin_name, plugin in sorted_plugins:
+        for _, plugin in sorted_plugins:
             try:
                 if hasattr(plugin, hook_name):
                     method = getattr(plugin, hook_name)

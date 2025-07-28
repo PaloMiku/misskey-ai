@@ -10,7 +10,6 @@ from loguru import logger
 
 from .exceptions import ConfigurationError
 from .interfaces import IConfigProvider
-from .validator import Validator
 from .constants import ConfigKeys
 
 T = TypeVar("T")
@@ -20,7 +19,6 @@ class Config(IConfigProvider):
     def __init__(self, config_path: Optional[str] = None):
         self.config_path = config_path or os.environ.get("CONFIG_PATH", "config.yaml")
         self.config: Dict[str, Any] = {}
-        self.validator = Validator()
 
     async def load(self) -> None:
         config_path = Path(self.config_path)
@@ -133,25 +131,6 @@ class Config(IConfigProvider):
         prompt_configs = [ConfigKeys.BOT_SYSTEM_PROMPT, ConfigKeys.BOT_AUTO_POST_PROMPT]
         return config_path in prompt_configs
 
-    def _validate_config(self) -> None:
-        try:
-            misskey_data = {
-                "instance_url": self.get(ConfigKeys.MISSKEY_INSTANCE_URL),
-                "access_token": self.get(ConfigKeys.MISSKEY_ACCESS_TOKEN),
-            }
-            deepseek_data = {
-                "api_key": self.get(ConfigKeys.DEEPSEEK_API_KEY),
-                "model": self.get(ConfigKeys.DEEPSEEK_MODEL),
-                "api_base": self.get(ConfigKeys.DEEPSEEK_API_BASE),
-                "max_tokens": self.get(ConfigKeys.DEEPSEEK_MAX_TOKENS),
-                "temperature": self.get(ConfigKeys.DEEPSEEK_TEMPERATURE),
-            }
-            self.validator.validate_config(misskey_data, deepseek_data)
-            logger.debug("配置验证通过")
-        except (ValueError, TypeError, AttributeError) as e:
-            self.validator.log_validation_error(e, "配置验证")
-            raise ConfigurationError(f"配置验证失败: {e}")
-
     def get(self, key: str, default: Any = None) -> Any:
         keys = key.split(".")
         value = self.config
@@ -189,6 +168,42 @@ class Config(IConfigProvider):
             ConfigKeys.LOG_LEVEL: "INFO",
         }
         return builtin_defaults.get(key)
+
+    def _validate_config(self) -> None:
+        self._validate_required_configs()
+        self._validate_file_paths()
+        logger.debug("配置验证完成")
+
+    def _validate_required_configs(self) -> None:
+        required_configs = [
+            (ConfigKeys.MISSKEY_INSTANCE_URL, "Misskey 实例 URL"),
+            (ConfigKeys.MISSKEY_ACCESS_TOKEN, "Misskey 访问令牌"),
+            (ConfigKeys.DEEPSEEK_API_KEY, "DeepSeek API 密钥"),
+            (ConfigKeys.DEEPSEEK_MODEL, "DeepSeek 模型名称"),
+            (ConfigKeys.DEEPSEEK_API_BASE, "DeepSeek API 基础 URL"),
+        ]
+        for config_key, display_name in required_configs:
+            value = self.get(config_key)
+            if not value or (isinstance(value, str) and not value.strip()):
+                raise ConfigurationError(
+                    f"缺少必需配置项: {display_name} ({config_key})"
+                )
+
+    def _validate_file_paths(self) -> None:
+        db_path = self.get(ConfigKeys.DB_PATH)
+        if db_path:
+            db_dir = Path(db_path).parent
+            try:
+                db_dir.mkdir(parents=True, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                raise ConfigurationError(f"无法创建数据库目录 {db_dir}: {e}")
+        log_path = self.get(ConfigKeys.LOG_PATH)
+        if log_path:
+            log_dir = Path(log_path).parent
+            try:
+                log_dir.mkdir(parents=True, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                raise ConfigurationError(f"无法创建日志目录 {log_dir}: {e}")
 
     def get_typed(self, key: str, default: T = None, expected_type: type = None) -> T:
         value = self.get(key, default)

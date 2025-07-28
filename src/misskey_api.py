@@ -18,21 +18,14 @@ from .constants import (
     API_MAX_RETRIES,
     API_TIMEOUT,
 )
-from .interfaces import IAPIClient, IValidator
+from .interfaces import IAPIClient
 from .utils import retry_async
 
 
 class MisskeyAPI(IAPIClient):
-    def __init__(self, validator: IValidator, instance_url: str, access_token: str):
-        self.validator = validator
-        try:
-            misskey_data = {"instance_url": instance_url, "access_token": access_token}
-            config = self.validator.validate_misskey_config(misskey_data)
-            self.instance_url = str(config.instance_url).rstrip("/")
-            self.access_token = config.access_token
-        except (ValueError, TypeError, AttributeError) as e:
-            validator.log_validation_error(e, "Misskey API 初始化")
-            raise ValueError(f"Misskey API 初始化失败: {e}")
+    def __init__(self, instance_url: str, access_token: str):
+        self.instance_url = instance_url.rstrip("/")
+        self.access_token = access_token
         self.headers = {
             "Content-Type": "application/json",
             "User-Agent": "MisskeyBot/1.0",
