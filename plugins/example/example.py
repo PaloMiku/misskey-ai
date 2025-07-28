@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 
 from typing import Dict, Any, Optional
+
 from loguru import logger
+
 from src.plugin_base import PluginBase
 
 
@@ -23,71 +25,54 @@ class ExamplePlugin(PluginBase):
     async def cleanup(self) -> None:
         await super().cleanup()
 
+    def _create_response(
+        self, response_text: str, content_key: str = "response"
+    ) -> Dict[str, Any]:
+        response = {
+            "handled": True,
+            "plugin_name": self.name,
+            content_key: response_text,
+        }
+        return response if self._validate_plugin_response(response) else None
+
     async def on_mention(
         self, mention_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        try:
-            if not self.greeting_enabled:
-                return None
-            username = self._extract_username(mention_data)
-            text = mention_data.get("text", "").lower()
-            if "你好" in text or "hello" in text or "hi" in text:
-                self._log_plugin_action("处理问候消息", f"来自 @{username}")
-                response = {
-                    "handled": True,
-                    "plugin_name": self.name,
-                    "response": "你好！我是示例插件，很高兴见到你！",
-                }
-                if self._validate_plugin_response(response):
-                    return response
-                else:
-                    logger.error("Example 插件响应验证失败")
-                    return None
+        if not self.greeting_enabled:
             return None
+        try:
+            text = mention_data.get("text", "").lower()
+            if any(greeting in text for greeting in ["你好", "hello", "hi"]):
+                username = self._extract_username(mention_data)
+                self._log_plugin_action("处理问候消息", f"来自 @{username}")
+                return self._create_response("你好！我是示例插件，很高兴见到你！")
         except (ValueError, TypeError, AttributeError, KeyError) as e:
             logger.error(f"Example 插件处理提及时出错: {e}")
-            return None
+        return None
 
     async def on_message(
         self, message_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
+        if not self.greeting_enabled:
+            return None
         try:
-            if not self.greeting_enabled:
-                return None
-            username = self._extract_username(message_data)
             text = message_data.get("text", "").lower()
             if "插件" in text and "测试" in text:
+                username = self._extract_username(message_data)
                 self._log_plugin_action("处理测试消息", f"来自 @{username}")
-                response = {
-                    "handled": True,
-                    "plugin_name": self.name,
-                    "response": "插件系统工作正常！这是来自示例插件的回复。",
-                }
-                if self._validate_plugin_response(response):
-                    return response
-                else:
-                    logger.error("Example 插件响应验证失败")
-                    return None
-            return None
+                return self._create_response(
+                    "插件系统工作正常！这是来自示例插件的回复。"
+                )
         except (ValueError, TypeError, AttributeError, KeyError) as e:
             logger.error(f"Example 插件处理消息时出错: {e}")
-            return None
+        return None
 
     async def on_auto_post(self) -> Optional[Dict[str, Any]]:
+        if not self.auto_post_enabled:
+            return None
         try:
-            if not self.auto_post_enabled:
-                return None
             self._log_plugin_action("生成自动发布内容")
-            response = {
-                "handled": True,
-                "plugin_name": "Example",
-                "content": "这是来自示例插件的自动发布内容！",
-            }
-            if self._validate_plugin_response(response):
-                return response
-            else:
-                logger.error("Example 插件响应验证失败")
-                return None
+            return self._create_response("这是来自示例插件的自动发布内容！", "content")
         except (ValueError, TypeError, AttributeError) as e:
             logger.error(f"Example 插件生成自动发布内容时出错: {e}")
-            return None
+        return None

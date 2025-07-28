@@ -23,7 +23,6 @@ class Config(IConfigProvider):
     async def load(self) -> None:
         config_path = Path(self.config_path)
         if not config_path.exists():
-            logger.error(f"配置文件不存在: {config_path}")
             raise ConfigurationError(f"配置文件不存在: {config_path}")
         try:
             with open(config_path, "r", encoding="utf-8") as f:
@@ -32,19 +31,10 @@ class Config(IConfigProvider):
             self._override_from_env()
             self._validate_config()
         except yaml.YAMLError as e:
-            logger.error(f"配置文件格式错误: {e}")
             raise ConfigurationError(f"配置文件格式错误: {e}")
-        except FileNotFoundError as e:
-            logger.error(f"配置文件不存在: {e}")
-            raise ConfigurationError(f"配置文件不存在: {e}")
-        except PermissionError as e:
-            logger.error(f"配置文件权限不足: {e}")
-            raise ConfigurationError(f"配置文件权限不足: {e}")
-        except (OSError, IOError) as e:
-            logger.error(f"配置文件读取错误: {e}")
+        except (FileNotFoundError, PermissionError, OSError, IOError) as e:
             raise ConfigurationError(f"配置文件读取错误: {e}")
         except (ValueError, TypeError, AttributeError) as e:
-            logger.error(f"加载配置文件未知错误: {e}")
             raise ConfigurationError(f"加载配置文件未知错误: {e}")
 
     def _override_from_env(self) -> None:
@@ -78,8 +68,7 @@ class Config(IConfigProvider):
             "LOG_LEVEL": (ConfigKeys.LOG_LEVEL, str),
         }
         for env_key, (config_path, value_type) in env_mappings.items():
-            env_value = os.environ.get(env_key)
-            if env_value:
+            if env_value := os.environ.get(env_key):
                 self._set_config_value(config_path, env_value, value_type)
 
     def _set_config_value(self, path: str, value: str, value_type: type) -> None:
@@ -87,14 +76,14 @@ class Config(IConfigProvider):
         config = self.config
         for key in keys[:-1]:
             config = config.setdefault(key, {})
-        if value_type is bool:
-            config[keys[-1]] = value.lower() in ("true", "yes")
-        elif value_type is int:
-            config[keys[-1]] = int(value)
-        elif value_type is float:
-            config[keys[-1]] = float(value)
-        else:
-            config[keys[-1]] = self._process_string_value(value, path)
+        converters = {
+            bool: lambda v: v.lower() in ("true", "yes"),
+            int: int,
+            float: float,
+        }
+        config[keys[-1]] = converters.get(
+            value_type, lambda v: self._process_string_value(v, path)
+        )(value)
 
     def _process_string_value(self, value: Any, config_path: str) -> str:
         if not isinstance(value, str):
@@ -119,29 +108,19 @@ class Config(IConfigProvider):
             return file_path
 
     def _looks_like_file_path(self, value: str) -> bool:
-        if len(value) > 200:
-            return False
-        file_indicators = [".txt"]
-        if any(value.endswith(ext) for ext in file_indicators):
-            return True
-        path_indicators = ["prompts"]
-        return any(indicator in value for indicator in path_indicators)
+        return len(value) <= 200 and (value.endswith(".txt") or "prompts" in value)
 
     def _is_prompt_config(self, config_path: str) -> bool:
         prompt_configs = [ConfigKeys.BOT_SYSTEM_PROMPT, ConfigKeys.BOT_AUTO_POST_PROMPT]
         return config_path in prompt_configs
 
     def get(self, key: str, default: Any = None) -> Any:
-        keys = key.split(".")
-        value = self.config
-        for k in keys:
-            if isinstance(value, dict) and k in value:
-                value = value[k]
-            else:
-                if default is None:
-                    default = self._get_builtin_default(key)
-                return default
-        return value
+        from functools import reduce
+
+        try:
+            return reduce(lambda d, k: d[k], key.split("."), self.config)
+        except (KeyError, TypeError):
+            return default if default is not None else self._get_builtin_default(key)
 
     def _get_builtin_default(self, key: str) -> Any:
         builtin_defaults = {
@@ -190,20 +169,16 @@ class Config(IConfigProvider):
                 )
 
     def _validate_file_paths(self) -> None:
-        db_path = self.get(ConfigKeys.DB_PATH)
-        if db_path:
-            db_dir = Path(db_path).parent
-            try:
-                db_dir.mkdir(parents=True, exist_ok=True)
-            except (OSError, PermissionError) as e:
-                raise ConfigurationError(f"无法创建数据库目录 {db_dir}: {e}")
-        log_path = self.get(ConfigKeys.LOG_PATH)
-        if log_path:
-            log_dir = Path(log_path).parent
-            try:
-                log_dir.mkdir(parents=True, exist_ok=True)
-            except (OSError, PermissionError) as e:
-                raise ConfigurationError(f"无法创建日志目录 {log_dir}: {e}")
+        paths = [
+            (self.get(ConfigKeys.DB_PATH), "数据库目录"),
+            (self.get(ConfigKeys.LOG_PATH), "日志目录"),
+        ]
+        for path, desc in paths:
+            if path:
+                try:
+                    Path(path).parent.mkdir(parents=True, exist_ok=True)
+                except (OSError, PermissionError) as e:
+                    raise ConfigurationError(f"无法创建{desc} {Path(path).parent}: {e}")
 
     def get_typed(self, key: str, default: T = None, expected_type: type = None) -> T:
         value = self.get(key, default)

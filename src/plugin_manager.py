@@ -4,10 +4,11 @@
 import sys
 import importlib
 import importlib.util
-import yaml
-import pluggy
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+
+import yaml
+import pluggy
 from loguru import logger
 
 from .plugin_base import PluginBase
@@ -47,24 +48,23 @@ class PluginManager:
                 and not plugin_dir.name.startswith(".")
                 and plugin_dir.name not in {"__pycache__", "example"}
             ):
-                plugin_config = self._load_plugin_config(plugin_dir)
-                await self._load_plugin(plugin_dir, plugin_config)
+                await self._load_plugin(
+                    plugin_dir, self._load_plugin_config(plugin_dir)
+                )
         await self._initialize_plugins()
-        enabled_count = sum(1 for plugin in self.plugins.values() if plugin.enabled)
+        enabled_count = sum(plugin.enabled for plugin in self.plugins.values())
         logger.info(f"已发现 {len(self.plugins)} 个插件，{enabled_count} 个已启用")
 
     def _load_plugin_config(self, plugin_dir: Path) -> Dict[str, Any]:
         config_file = plugin_dir / "config.yaml"
-        if config_file.exists():
-            try:
-                with open(config_file, "r", encoding="utf-8") as f:
-                    config = yaml.safe_load(f) or {}
-                return config
-            except (OSError, IOError, yaml.YAMLError, UnicodeDecodeError) as e:
-                logger.error(f"加载插件 {plugin_dir.name} 配置文件时出错: {e}")
-                return {}
-        else:
+        if not config_file.exists():
             return {"enabled": False}
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+        except (OSError, IOError, yaml.YAMLError, UnicodeDecodeError) as e:
+            logger.error(f"加载插件 {plugin_dir.name} 配置文件时出错: {e}")
+            return {}
 
     async def _load_plugin(
         self, plugin_dir: Path, plugin_config: Dict[str, Any]
@@ -76,20 +76,16 @@ class PluginManager:
                     f"插件目录 {plugin_dir.name} 中未找到 {plugin_dir.name}.py 文件"
                 )
                 return
-            module = self._load_plugin_module(plugin_dir, plugin_file)
-            if module is None:
+            if not (module := self._load_plugin_module(plugin_dir, plugin_file)):
                 return
-            plugin_class = self._find_plugin_class(module, plugin_dir.name)
-            if plugin_class is None:
+            if not (plugin_class := self._find_plugin_class(module, plugin_dir.name)):
                 return
             plugin_instance = self._create_plugin_instance(
                 plugin_class, plugin_dir.name, plugin_config
             )
             self.plugins[plugin_dir.name] = plugin_instance
             self.plugin_configs[plugin_dir.name] = plugin_config
-
             self.pm.register(plugin_instance)
-
             status = "启用" if plugin_instance.enabled else "禁用"
             logger.debug(f"已发现插件: {plugin_dir.name} (状态: {status})")
         except (ImportError, AttributeError, TypeError, OSError) as e:
@@ -108,8 +104,7 @@ class PluginManager:
         return module
 
     def _find_plugin_class(self, module, plugin_name):
-        for attr_name in dir(module):
-            attr = getattr(module, attr_name)
+        for attr in (getattr(module, name) for name in dir(module)):
             if (
                 isinstance(attr, type)
                 and issubclass(attr, PluginBase)
@@ -135,24 +130,23 @@ class PluginManager:
         return plugin_class(context)
 
     async def _initialize_plugins(self) -> None:
-        sorted_plugins = sorted(
+        for _, plugin in sorted(
             self.plugins.items(), key=lambda x: x[1].priority, reverse=True
-        )
-        for _, plugin in sorted_plugins:
+        ):
+            if not plugin.enabled:
+                continue
             try:
-                if plugin.enabled:
-                    success = await plugin.initialize()
-                    if not success:
-                        logger.warning(f"插件 {plugin.name} 初始化失败")
-                        plugin.set_enabled(False)
-                    else:
-                        logger.debug(f"插件 {plugin.name} 初始化成功")
+                if await plugin.initialize():
+                    logger.debug(f"插件 {plugin.name} 初始化成功")
+                else:
+                    logger.warning(f"插件 {plugin.name} 初始化失败")
+                    plugin.set_enabled(False)
             except (ValueError, TypeError, AttributeError, OSError) as e:
                 logger.error(f"初始化插件 {plugin.name} 时出错: {e}")
                 plugin.set_enabled(False)
 
     async def cleanup_plugins(self) -> None:
-        for _, plugin in self.plugins.items():
+        for plugin in self.plugins.values():
             if plugin.enabled:
                 try:
                     await plugin.cleanup()
@@ -176,19 +170,19 @@ class PluginManager:
 
     async def call_plugin_hook(self, hook_name: str, *args, **kwargs) -> List[Any]:
         results = []
-
-        sorted_plugins = sorted(
-            [(name, plugin) for name, plugin in self.plugins.items() if plugin.enabled],
-            key=lambda x: x[1].priority,
+        enabled_plugins = sorted(
+            [p for p in self.plugins.values() if p.enabled],
+            key=lambda x: x.priority,
             reverse=True,
         )
-        for _, plugin in sorted_plugins:
+        for plugin in enabled_plugins:
+            if not hasattr(plugin, hook_name):
+                continue
             try:
-                if hasattr(plugin, hook_name):
-                    method = getattr(plugin, hook_name)
-                    result = await method(*args, **kwargs)
-                    if result is not None:
-                        results.append(result)
+                if (
+                    result := await getattr(plugin, hook_name)(*args, **kwargs)
+                ) is not None:
+                    results.append(result)
             except (ValueError, TypeError, AttributeError, OSError) as e:
                 logger.error(f"调用插件 {plugin.name} 的 {hook_name} hook 时出错: {e}")
         return results
@@ -200,15 +194,13 @@ class PluginManager:
         return self.plugins.get(name)
 
     def enable_plugin(self, name: str) -> bool:
-        plugin = self.plugins.get(name)
-        if plugin:
+        if plugin := self.plugins.get(name):
             plugin.set_enabled(True)
             return True
         return False
 
     def disable_plugin(self, name: str) -> bool:
-        plugin = self.plugins.get(name)
-        if plugin:
+        if plugin := self.plugins.get(name):
             plugin.set_enabled(False)
             return True
         return False

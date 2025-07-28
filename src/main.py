@@ -18,7 +18,6 @@ from .constants import ConfigKeys
 
 bot: Optional[MisskeyBot] = None
 tasks: List[asyncio.Task] = []
-_shutdown_called: bool = False
 shutdown_event: Optional[asyncio.Event] = None
 
 
@@ -30,11 +29,7 @@ async def main() -> None:
     await config.load()
     log_path = Path(config.get(ConfigKeys.LOG_PATH))
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_level = config.get(ConfigKeys.LOG_LEVEL)
-    logger.add(
-        log_path,
-        level=log_level,
-    )
+    logger.add(log_path, level=config.get(ConfigKeys.LOG_LEVEL))
     await log_system_info()
     logger.info("启动机器人...")
     try:
@@ -60,15 +55,18 @@ async def main() -> None:
 
 async def _setup_monitoring_and_signals() -> None:
     global tasks
-    memory_task = asyncio.create_task(monitor_memory_usage())
-    tasks.append(memory_task)
+    tasks.append(asyncio.create_task(monitor_memory_usage()))
     loop = asyncio.get_running_loop()
+    signals = (
+        (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+        if sys.platform != "win32"
+        else (signal.SIGINT, signal.SIGTERM)
+    )
     if sys.platform != "win32":
-        signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
         for sig in signals:
             loop.add_signal_handler(sig, _signal_handler, sig)
     else:
-        for sig in (signal.SIGINT, signal.SIGTERM):
+        for sig in signals:
             signal.signal(sig, lambda s, f: _signal_handler(signal.Signals(s)))
 
 
@@ -80,32 +78,22 @@ def _signal_handler(sig):
 
 
 async def shutdown() -> None:
-    global bot, tasks, _shutdown_called, shutdown_event
-    if _shutdown_called:
+    global bot, tasks, shutdown_event
+    if hasattr(shutdown, "_called"):
         return
-    _shutdown_called = True
+    shutdown._called = True
     logger.info("关闭机器人...")
-    await _cleanup_tasks()
-    await _stop_bot()
-    if shutdown_event and not shutdown_event.is_set():
-        shutdown_event.set()
-    logger.info("机器人已关闭")
-
-
-async def _cleanup_tasks() -> None:
-    global tasks
     for task in tasks:
         if not task.done():
             task.cancel()
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
-    tasks = []
-
-
-async def _stop_bot() -> None:
-    global bot
+    tasks.clear()
     if bot:
         await bot.stop()
+    if shutdown_event and not shutdown_event.is_set():
+        shutdown_event.set()
+    logger.info("机器人已关闭")
 
 
 if __name__ == "__main__":

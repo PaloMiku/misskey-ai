@@ -8,11 +8,7 @@ from typing import Dict, Any, Optional
 
 import psutil
 from loguru import logger
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    retry_if_exception_type,
-)
+from tenacity import retry, stop_after_attempt, retry_if_exception_type
 
 
 def retry_async(max_retries=3, retryable_exceptions=None):
@@ -50,13 +46,11 @@ async def log_system_info() -> None:
 
 
 def get_memory_usage() -> Dict[str, Any]:
-    process = psutil.Process(os.getpid())
+    process = psutil.Process()
     memory_info = process.memory_info()
-    rss_mb = memory_info.rss / (1024 * 1024)
-    vms_mb = memory_info.vms / (1024 * 1024)
     return {
-        "rss_mb": round(rss_mb, 2),
-        "vms_mb": round(vms_mb, 2),
+        "rss_mb": round(memory_info.rss / (1024 * 1024), 2),
+        "vms_mb": round(memory_info.vms / (1024 * 1024), 2),
         "percent": process.memory_percent(),
     }
 
@@ -99,10 +93,7 @@ def health_check() -> bool:
         if memory_usage["percent"] > 90:
             logger.warning(f"内存使用过高: {memory_usage['percent']}%")
             return False
-        current_process = psutil.Process(os.getpid())
-        if not current_process.is_running():
-            return False
-        return True
+        return psutil.Process().is_running()
     except (OSError, ValueError, AttributeError) as e:
         logger.error(f"健康检查失败: {e}")
         return False

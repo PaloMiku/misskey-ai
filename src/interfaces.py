@@ -5,34 +5,6 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Callable, Awaitable
 
 
-class IUtilsProvider(ABC):
-    @abstractmethod
-    def extract_username(self, user_data: Dict[str, Any]) -> str:
-        pass
-
-    @abstractmethod
-    def extract_user_id(self, user_data: Dict[str, Any]) -> str:
-        pass
-
-
-class IPersistenceManager(ABC):
-    @abstractmethod
-    async def initialize(self) -> None:
-        pass
-
-    @abstractmethod
-    async def close(self) -> None:
-        pass
-
-    @abstractmethod
-    async def save_mention(self, mention_data: Dict[str, Any]) -> None:
-        pass
-
-    @abstractmethod
-    async def save_message(self, message_data: Dict[str, Any]) -> None:
-        pass
-
-
 class IConfigProvider(ABC):
     @abstractmethod
     def get(self, key: str, default: Any = None) -> Any:

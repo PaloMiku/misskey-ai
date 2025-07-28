@@ -3,7 +3,9 @@
 
 from pathlib import Path
 from typing import Dict, Any, Optional
+
 from loguru import logger
+
 from src.plugin_base import PluginBase
 
 
@@ -24,9 +26,7 @@ class TopicsPlugin(PluginBase):
                 return False
             await self._create_topics_table()
             await self._load_topics()
-            self._log_plugin_action(
-                "初始化完成", f"加载了 {len(self.topics)} 个主题关键词"
-            )
+            self._log_plugin_action("初始化完成", f"加载了 {len(self.topics)} 个主题关键词")
             return True
         except (OSError, ValueError, TypeError, AttributeError) as e:
             logger.error(f"Topics 插件初始化失败: {e}")
@@ -38,10 +38,9 @@ class TopicsPlugin(PluginBase):
     async def on_auto_post(self) -> Optional[Dict[str, Any]]:
         try:
             topic = await self._get_next_topic()
-            plugin_prompt = self.prefix_template.format(topic=topic)
             return {
                 "modify_prompt": True,
-                "plugin_prompt": plugin_prompt,
+                "plugin_prompt": self.prefix_template.format(topic=topic),
                 "plugin_name": self.name,
             }
         except (ValueError, TypeError, AttributeError, OSError) as e:
@@ -57,14 +56,11 @@ class TopicsPlugin(PluginBase):
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            result = await self.persistence_manager.execute_query(
-                "SELECT COUNT(*) FROM topics_usage"
-            )
+            result = await self.persistence_manager.execute_query("SELECT COUNT(*) FROM topics_usage")
             if not result or result[0][0] == 0:
-                initial_line = max(0, self.start_line - 1)
                 await self.persistence_manager.execute_insert(
                     "INSERT INTO topics_usage (last_used_line) VALUES (?)",
-                    (initial_line,),
+                    (max(0, self.start_line - 1),),
                 )
             logger.debug("Topics 数据库表创建/检查完成")
         except (OSError, ValueError, TypeError) as e:
@@ -77,14 +73,13 @@ class TopicsPlugin(PluginBase):
 
     async def _load_topics(self) -> None:
         try:
-            plugin_dir = Path(__file__).parent
-            topics_file_path = plugin_dir / "topics.txt"
+            topics_file_path = Path(__file__).parent / "topics.txt"
             if not topics_file_path.exists():
                 logger.warning(f"主题文件不存在: {topics_file_path}")
                 self._use_default_topics()
                 return
             with open(topics_file_path, "r", encoding="utf-8") as f:
-                self.topics = [line.strip() for line in f.readlines() if line.strip()]
+                self.topics = [line.strip() for line in f if line.strip()]
             if not self.topics:
                 logger.warning("主题文件为空")
                 self._use_default_topics()
@@ -99,8 +94,7 @@ class TopicsPlugin(PluginBase):
             return "生活"
         try:
             last_used_line = await self._get_last_used_line()
-            next_line = last_used_line % len(self.topics)
-            topic = self.topics[next_line]
+            topic = self.topics[last_used_line % len(self.topics)]
             await self._update_last_used_line(last_used_line + 1)
             self._log_plugin_action("选择主题", f"{topic} (行数: {last_used_line + 1})")
             return topic

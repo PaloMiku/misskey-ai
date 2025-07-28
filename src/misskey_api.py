@@ -40,37 +40,36 @@ class MisskeyAPI(IAPIClient):
         return False
 
     async def close(self) -> None:
-        if self.session is not None and not self.session.closed:
+        if self.session and not self.session.closed:
             connector = self.session.connector
             await self.session.close()
-            if connector is not None and not connector.closed:
+            if connector and not connector.closed:
                 await connector.close()
             await asyncio.sleep(0.1)
             self.session = None
         logger.debug("Misskey API 客户端连接已关闭")
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
-        if self.session is None or self.session.closed:
-            timeout = aiohttp.ClientTimeout(total=API_TIMEOUT)
-            self.session = aiohttp.ClientSession(timeout=timeout)
+        if not self.session or self.session.closed:
+            self.session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT)
+            )
         return self.session
 
     def _is_retryable_error(self, status_code: int) -> bool:
         return status_code in RETRYABLE_HTTP_CODES
 
     def _handle_response_status(self, response, endpoint: str):
-        if response.status == HTTP_UNAUTHORIZED:
+        status = response.status
+        if status == HTTP_UNAUTHORIZED:
             logger.error("API 认证失败")
             raise AuthenticationError("Misskey API 认证失败，请检查访问令牌")
-        elif response.status == HTTP_FORBIDDEN:
+        elif status == HTTP_FORBIDDEN:
             logger.error("API 权限不足")
             raise AuthenticationError("Misskey API 权限不足，请求被拒绝")
-        elif response.status == HTTP_TOO_MANY_REQUESTS:
+        elif status == HTTP_TOO_MANY_REQUESTS:
             raise APIRateLimitError("Misskey API 速率限制")
-        elif self._is_retryable_error(response.status):
-            return "retryable"
-        else:
-            return "error"
+        return "retryable" if self._is_retryable_error(status) else "error"
 
     async def _process_response(self, response, endpoint: str):
         if response.status == HTTP_OK:
@@ -97,15 +96,13 @@ class MisskeyAPI(IAPIClient):
     async def _make_request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        if not endpoint or not isinstance(endpoint, str) or len(endpoint.strip()) == 0:
+        if not endpoint or not isinstance(endpoint, str) or not endpoint.strip():
             raise ValueError("API 端点不能为空")
         if data is not None and not isinstance(data, dict):
             raise ValueError("请求数据必须是字典格式")
         session = await self._ensure_session()
         url = f"{self.instance_url}/api/{endpoint}"
-        request_data = {"i": self.access_token}
-        if data:
-            request_data.update(data)
+        request_data = {"i": self.access_token, **(data or {})}
         try:
             logger.debug(f"请求 Misskey API: {endpoint}")
             async with session.post(
@@ -117,15 +114,12 @@ class MisskeyAPI(IAPIClient):
             raise APIConnectionError("Misskey", f"网络连接失败: {e}")
         except (AuthenticationError, ValueError):
             raise
-        except (ConnectionError, OSError, TimeoutError) as e:
+        except (ConnectionError, OSError, TimeoutError, RuntimeError, MemoryError) as e:
             logger.error(f"网络连接错误: {e}")
             raise APIConnectionError("Misskey", f"网络连接错误: {e}")
         except (TypeError, KeyError) as e:
             logger.error(f"Misskey API 数据处理错误: {e}")
             raise ValueError(f"API 响应数据格式错误: {e}")
-        except (RuntimeError, MemoryError) as e:
-            logger.error(f"未知错误: {e}")
-            raise APIConnectionError("Misskey", f"未知错误: {e}")
 
     async def request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
@@ -174,15 +168,13 @@ class MisskeyAPI(IAPIClient):
     ) -> Dict[str, Any]:
         if reply_id:
             visibility = await self._get_visibility_for_reply(reply_id, visibility)
-        else:
-            if visibility is None:
-                visibility = self._get_default_visibility()
+        elif visibility is None:
+            visibility = self._get_default_visibility()
         data = {
             "text": text,
             "visibility": visibility,
+            **({"replyId": reply_id} if reply_id else {}),
         }
-        if reply_id:
-            data["replyId"] = reply_id
         result = await self._make_request("notes/create", data)
         logger.debug(
             f"Misskey 发帖成功，note_id: {result.get('createdNote', {}).get('id', 'unknown')}"
@@ -190,19 +182,12 @@ class MisskeyAPI(IAPIClient):
         return result
 
     async def get_note(self, note_id: str) -> Dict[str, Any]:
-        data = {
-            "noteId": note_id,
-        }
-        return await self._make_request("notes/show", data)
+        return await self._make_request("notes/show", {"noteId": note_id})
 
     async def get_mentions(
         self, limit: int = 10, since_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        data = {
-            "limit": limit,
-        }
-        if since_id:
-            data["sinceId"] = since_id
+        data = {"limit": limit, **({"sinceId": since_id} if since_id else {})}
         return await self._make_request("notes/mentions", data)
 
     async def get_user(
@@ -210,22 +195,16 @@ class MisskeyAPI(IAPIClient):
     ) -> Dict[str, Any]:
         if not (user_id or username):
             raise ValueError("必须提供 user_id 或 username")
-        data = {}
-        if user_id:
-            data["userId"] = user_id
-        elif username:
-            data["username"] = username
+        data = {"userId": user_id} if user_id else {"username": username}
         return await self._make_request("users/show", data)
 
     async def get_current_user(self) -> Dict[str, Any]:
         return await self._make_request("i", {})
 
     async def send_message(self, user_id: str, text: str) -> Dict[str, Any]:
-        data = {
-            "toUserId": user_id,
-            "text": text,
-        }
-        result = await self._make_request("chat/messages/create-to-user", data)
+        result = await self._make_request(
+            "chat/messages/create-to-user", {"toUserId": user_id, "text": text}
+        )
         logger.debug(f"Misskey 聊天发送成功，message_id: {result.get('id', 'unknown')}")
         return result
 
@@ -235,20 +214,17 @@ class MisskeyAPI(IAPIClient):
         data = {
             "userId": user_id,
             "limit": limit,
+            **({"sinceId": since_id} if since_id else {}),
         }
-        if since_id:
-            data["sinceId"] = since_id
         return await self._make_request("chat/messages/user-timeline", data)
 
     async def get_all_chat_messages(
         self, limit: int = 10, room: bool = False
     ) -> List[Dict[str, Any]]:
-        data = {
-            "limit": limit,
-            "room": room,
-        }
         try:
-            chat_messages = await self._make_request("chat/history", data)
+            chat_messages = await self._make_request(
+                "chat/history", {"limit": limit, "room": room}
+            )
             logger.debug(f"通过 chat/history API 获取到 {len(chat_messages)} 条聊天")
             return chat_messages
         except (APIConnectionError, APIRateLimitError, ValueError) as e:

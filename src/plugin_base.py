@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-import pluggy
 from typing import Dict, Any, Optional, Callable
+
+import pluggy
 from loguru import logger
 
 from .interfaces import IPlugin
@@ -113,21 +114,13 @@ class PluginBase(IPlugin):
         return extract_user_id(data)
 
     def _log_plugin_action(self, action: str, details: str = "") -> None:
-        if details:
-            logger.info(f"{self.name} 插件{action}: {details}")
-        else:
-            logger.info(f"{self.name} 插件{action}")
+        logger.info(f"{self.name} 插件{action}{': ' + details if details else ''}")
 
     def _validate_plugin_response(self, response: Any) -> bool:
-        if not isinstance(response, dict):
-            return False
-        if "handled" in response and not isinstance(response["handled"], bool):
-            return False
-        if "plugin_name" in response and not isinstance(response["plugin_name"], str):
-            return False
-        if "response" in response and not isinstance(response["response"], str):
-            return False
-        return True
+        return (isinstance(response, dict) and
+                all(isinstance(response.get(k), t) for k, t in [
+                    ("handled", bool), ("plugin_name", str), ("response", str)
+                ] if k in response))
 
     def _register_resource(self, resource: Any, cleanup_method: str = "close") -> None:
         self._resources_to_cleanup.append((resource, cleanup_method))
@@ -146,4 +139,4 @@ class PluginBase(IPlugin):
         self._resources_to_cleanup.clear()
 
     def _check_resource_leaks(self) -> bool:
-        return len(self._resources_to_cleanup) > 0
+        return bool(self._resources_to_cleanup)

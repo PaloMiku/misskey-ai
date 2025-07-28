@@ -20,12 +20,22 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        if sys.platform == "win32":
-            asyncio.run(handle_shutdown())
+        sys.platform == "win32" and asyncio.run(handle_shutdown())
         print("\n机器人已停止")
-    except (OSError, IOError) as e:
-        asyncio.run(handle_shutdown(f"文件或网络错误: {e}"))
-    except (ValueError, TypeError, KeyError) as e:
-        asyncio.run(handle_shutdown(f"配置或数据错误: {e}"))
-    except (RuntimeError, ImportError, ModuleNotFoundError) as e:
-        asyncio.run(handle_shutdown(f"运行时错误: {e}"))
+    except (
+        OSError,
+        IOError,
+        ValueError,
+        TypeError,
+        KeyError,
+        RuntimeError,
+        ImportError,
+        ModuleNotFoundError,
+    ) as e:
+        error_map = {
+            (OSError, IOError): "文件或网络错误",
+            (ValueError, TypeError, KeyError): "配置或数据错误",
+            (RuntimeError, ImportError, ModuleNotFoundError): "运行时错误",
+        }
+        msg = next((v for k, v in error_map.items() if isinstance(e, k)), "未知错误")
+        asyncio.run(handle_shutdown(f"{msg}: {e}"))

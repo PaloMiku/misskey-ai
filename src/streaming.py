@@ -30,8 +30,8 @@ class StreamingClient(IStreamingClient):
         self.message_task: Optional[asyncio.Task] = None
         self.channels: Dict[str, Dict[str, Any]] = {}
         self.event_handlers: Dict[str, List[Callable]] = {}
-        self.running = False
         self.processed_events = LRUCache(maxsize=MAX_CACHE)
+        self.running = False
 
     async def __aenter__(self):
         return self
@@ -53,32 +53,26 @@ class StreamingClient(IStreamingClient):
         self._add_event_handler("message", handler)
 
     def _add_event_handler(self, event_type: str, handler: Callable) -> None:
-        if event_type not in self.event_handlers:
-            self.event_handlers[event_type] = []
-        self.event_handlers[event_type].append(handler)
+        self.event_handlers.setdefault(event_type, []).append(handler)
 
     async def connect(self, channels: Optional[list] = None) -> None:
         if self.running:
             logger.warning("Streaming 客户端已在运行")
             return
         self.running = True
-
-        async def start_connection():
-            await self._connect_websocket()
-            if channels:
-                for channel in channels:
-                    if isinstance(channel, str):
-                        try:
-                            channel_type = ChannelType(channel)
-                            await self.connect_channel(channel_type)
-                        except ValueError:
-                            logger.warning(f"未知的频道类型: {channel}")
-                    elif isinstance(channel, ChannelType):
-                        await self.connect_channel(channel)
-            else:
-                await self.connect_channel(ChannelType.MAIN)
-
-        await start_connection()
+        await self._connect_websocket()
+        if channels:
+            for channel in channels:
+                if isinstance(channel, str):
+                    try:
+                        channel_type = ChannelType(channel)
+                        await self.connect_channel(channel_type)
+                    except ValueError:
+                        logger.warning(f"未知的频道类型: {channel}")
+                elif isinstance(channel, ChannelType):
+                    await self.connect_channel(channel)
+        else:
+            await self.connect_channel(ChannelType.MAIN)
         logger.debug("Streaming 客户端已启动")
 
     async def disconnect(self) -> None:
@@ -119,30 +113,33 @@ class StreamingClient(IStreamingClient):
                 "params": params or {},
             },
         }
-        if self.ws_connection and not self.ws_connection.closed:
-            await self.ws_connection.send_str(json.dumps(message))
-            self.channels[channel_id] = {"type": channel_type, "params": params or {}}
-            logger.debug(f"已连接频道: {channel_type.value} (ID: {channel_id})")
-        else:
+        if not (self.ws_connection and not self.ws_connection.closed):
             logger.error(f"WebSocket 连接不可用，无法连接频道: {channel_type.value}")
             raise WebSocketConnectionError("WebSocket 连接不可用")
+        await self.ws_connection.send_str(json.dumps(message))
+        self.channels[channel_id] = {"type": channel_type, "params": params or {}}
+        logger.debug(f"已连接频道: {channel_type.value} (ID: {channel_id})")
         return channel_id
 
     async def disconnect_channel(self, channel_type: ChannelType) -> None:
-        channels_to_remove = []
-        for channel_id, channel_info in self.channels.items():
-            if channel_info["type"] == channel_type:
-                message = {"type": "disconnect", "body": {"id": channel_id}}
-                if self.ws_connection and not self.ws_connection.closed:
-                    await self.ws_connection.send_str(json.dumps(message))
-                channels_to_remove.append(channel_id)
+        channels_to_remove = [
+            ch_id
+            for ch_id, ch_info in self.channels.items()
+            if ch_info["type"] == channel_type
+        ]
         for channel_id in channels_to_remove:
+            if self.ws_connection and not self.ws_connection.closed:
+                message = {"type": "disconnect", "body": {"id": channel_id}}
+                await self.ws_connection.send_str(json.dumps(message))
             del self.channels[channel_id]
         logger.debug(f"已断开频道连接: {channel_type.value}")
 
     async def _connect_websocket(self) -> None:
-        ws_url = f"{self.instance_url.replace('https://', 'wss://').replace('http://', 'ws://')}/streaming?i={self.access_token}"
-        safe_url = f"{self.instance_url.replace('https://', 'wss://').replace('http://', 'ws://')}/streaming"
+        base_ws_url = self.instance_url.replace("https://", "wss://").replace(
+            "http://", "ws://"
+        )
+        ws_url = f"{base_ws_url}/streaming?i={self.access_token}"
+        safe_url = f"{base_ws_url}/streaming"
         logger.debug(f"连接 WebSocket: {safe_url}")
         if self.session is None:
             timeout = aiohttp.ClientTimeout(total=WS_TIMEOUT)
@@ -160,37 +157,28 @@ class StreamingClient(IStreamingClient):
             raise WebSocketConnectionError(f"WebSocket 连接失败: {e}")
 
     async def _close_websocket(self) -> None:
-        if self.heartbeat_task and not self.heartbeat_task.done():
-            self.heartbeat_task.cancel()
-            try:
-                await self.heartbeat_task
-            except asyncio.CancelledError:
-                pass
-        if self.message_task and not self.message_task.done():
-            self.message_task.cancel()
-            try:
-                await self.message_task
-            except asyncio.CancelledError:
-                pass
-        if self.ws_connection and not self.ws_connection.closed:
-            await self.ws_connection.close()
-        if self.session and not self.session.closed:
-            await self.session.close()
-        self.ws_connection = None
-        self.session = None
-        self.heartbeat_task = None
-        self.message_task = None
+        for task in [self.heartbeat_task, self.message_task]:
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        for conn in [self.ws_connection, self.session]:
+            if conn and not conn.closed:
+                await conn.close()
+        self.ws_connection = self.session = self.heartbeat_task = self.message_task = (
+            None
+        )
 
     async def _cleanup_failed_connection(self) -> None:
         try:
-            if self.ws_connection and not self.ws_connection.closed:
-                await self.ws_connection.close()
-            if self.session and not self.session.closed:
-                await self.session.close()
-            self.ws_connection = None
-            self.session = None
-            self.heartbeat_task = None
-            self.message_task = None
+            for conn in [self.ws_connection, self.session]:
+                if conn and not conn.closed:
+                    await conn.close()
+            self.ws_connection = self.session = self.heartbeat_task = (
+                self.message_task
+            ) = None
         except (OSError, ValueError) as e:
             logger.debug(f"清理失败连接时出错: {e}")
 
@@ -205,8 +193,9 @@ class StreamingClient(IStreamingClient):
     async def _heartbeat(self) -> None:
         while self.running and self.ws_connection and not self.ws_connection.closed:
             try:
-                ping_message = {"type": "ping", "body": {}}
-                await self.ws_connection.send_str(json.dumps(ping_message))
+                await self.ws_connection.send_str(
+                    json.dumps({"type": "ping", "body": {}})
+                )
                 await asyncio.sleep(WS_HEARTBEAT_INTERVAL)
             except (aiohttp.ClientError, OSError, ValueError) as e:
                 logger.error(f"心跳错误: {e}")
@@ -214,8 +203,7 @@ class StreamingClient(IStreamingClient):
 
     async def _send_pong(self) -> None:
         if self.ws_connection and not self.ws_connection.closed:
-            pong_message = {"type": "pong", "body": {}}
-            await self.ws_connection.send_str(json.dumps(pong_message))
+            await self.ws_connection.send_str(json.dumps({"type": "pong", "body": {}}))
 
     async def _handle_messages(self) -> None:
         while self.running and self.ws_connection and not self.ws_connection.closed:
@@ -313,12 +301,9 @@ class StreamingClient(IStreamingClient):
     async def _handle_main_channel_event(
         self, event_type: str, event_body: Dict[str, Any], event_data: Dict[str, Any]
     ) -> None:
-        if event_type == "mention":
-            await self._call_handlers("mention", event_data)
-        elif event_type == "reply":
-            await self._call_handlers("mention", event_data)
-        elif event_type == "chat":
-            await self._call_handlers("message", event_data)
+        handler_map = {"mention": "mention", "reply": "mention", "chat": "message"}
+        if event_type in handler_map:
+            await self._call_handlers(handler_map[event_type], event_data)
         else:
             logger.debug(f"收到未知类型的 main 频道事件: {event_type}")
             logger.debug(f"数据结构: {list(event_data.keys())}")
