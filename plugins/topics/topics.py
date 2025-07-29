@@ -24,9 +24,11 @@ class TopicsPlugin(PluginBase):
             if not self.persistence_manager:
                 logger.error("Topics 插件未获得 persistence_manager 实例")
                 return False
-            await self._create_topics_table()
             await self._load_topics()
-            self._log_plugin_action("初始化完成", f"加载了 {len(self.topics)} 个主题关键词")
+            await self._initialize_plugin_data()
+            self._log_plugin_action(
+                "初始化完成", f"加载了 {len(self.topics)} 个主题关键词"
+            )
             return True
         except (OSError, ValueError, TypeError, AttributeError) as e:
             logger.error(f"Topics 插件初始化失败: {e}")
@@ -47,24 +49,18 @@ class TopicsPlugin(PluginBase):
             logger.error(f"Topics 插件处理自动发帖失败: {e}")
             return None
 
-    async def _create_topics_table(self) -> None:
+    async def _initialize_plugin_data(self) -> None:
         try:
-            await self.persistence_manager.execute_update("""
-                CREATE TABLE IF NOT EXISTS topics_usage (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    last_used_line INTEGER NOT NULL DEFAULT 0,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            last_used_line = await self.persistence_manager.get_plugin_data(
+                "Topics", "last_used_line"
+            )
+            if last_used_line is None:
+                await self.persistence_manager.set_plugin_data(
+                    "Topics", "last_used_line", str(max(0, self.start_line - 1))
                 )
-            """)
-            result = await self.persistence_manager.execute_query("SELECT COUNT(*) FROM topics_usage")
-            if not result or result[0][0] == 0:
-                await self.persistence_manager.execute_insert(
-                    "INSERT INTO topics_usage (last_used_line) VALUES (?)",
-                    (max(0, self.start_line - 1),),
-                )
-            logger.debug("Topics 数据库表创建/检查完成")
+            logger.debug("Topics 插件数据库初始化完成")
         except (OSError, ValueError, TypeError) as e:
-            logger.warning(f"创建 topics 数据库表失败: {e}")
+            logger.warning(f"Topics 插件数据库初始化失败: {e}")
             raise
 
     def _use_default_topics(self) -> None:
@@ -104,19 +100,18 @@ class TopicsPlugin(PluginBase):
 
     async def _get_last_used_line(self) -> int:
         try:
-            result = await self.persistence_manager.execute_query(
-                "SELECT last_used_line FROM topics_usage ORDER BY id DESC LIMIT 1"
+            result = await self.persistence_manager.get_plugin_data(
+                "Topics", "last_used_line"
             )
-            return result[0][0] if result else 0
-        except (ValueError, TypeError, IndexError, OSError) as e:
+            return int(result) if result else 0
+        except (ValueError, TypeError, OSError) as e:
             logger.warning(f"获取上次使用行数失败: {e}")
             return 0
 
     async def _update_last_used_line(self, line_number: int) -> None:
         try:
-            await self.persistence_manager.execute_update(
-                "UPDATE topics_usage SET last_used_line = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-                (line_number,),
+            await self.persistence_manager.set_plugin_data(
+                "Topics", "last_used_line", str(line_number)
             )
         except (ValueError, TypeError, OSError) as e:
             logger.warning(f"更新上次使用行数失败: {e}")

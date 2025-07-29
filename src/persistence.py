@@ -287,8 +287,10 @@ class PersistenceManager:
             "SELECT COUNT(*) FROM processed_messages",
             "SELECT COUNT(*) FROM processed_mentions WHERE DATE(processed_at) = ?",
             "SELECT COUNT(*) FROM processed_messages WHERE DATE(processed_at) = ?",
+            "SELECT COUNT(*) FROM plugin_data",
+            "SELECT COUNT(*) FROM plugin_data WHERE DATE(updated_at) = ?",
         ]
-        params = [(), (), (today,), (today,)]
+        params = [(), (), (today,), (today,), (), (today,)]
         results = []
         for query, param in zip(queries, params):
             result = await self._execute(query, param)
@@ -299,6 +301,8 @@ class PersistenceManager:
             "total_messages": results[1],
             "today_mentions": results[2],
             "today_messages": results[3],
+            "total_plugin_data": results[4],
+            "today_plugin_data": results[5],
             "db_size_bytes": db_size,
             "db_size_mb": round(db_size / 1024 / 1024, 2),
         }
