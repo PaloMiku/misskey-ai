@@ -174,7 +174,8 @@ class MisskeyBot:
             await self.misskey.close()
             await self.deepseek.close()
             await self.persistence.close()
-            self.polling_manager.stop_polling()
+            if self.polling_manager.running:
+                self.polling_manager.stop_polling()
             self.polling_manager.clear_caches()
         except (OSError, ValueError, TypeError) as e:
             logger.error(f"停止机器人时出错: {e}")
