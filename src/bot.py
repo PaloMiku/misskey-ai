@@ -47,7 +47,6 @@ class MisskeyBot:
             raise ValueError("配置参数必须是 Config 类型")
         self.config = config
         self.startup_time = datetime.now(timezone.utc)
-        logger.debug(f"机器人启动时间 (UTC): {self.startup_time.isoformat()}")
         try:
             instance_url = config.get(ConfigKeys.MISSKEY_INSTANCE_URL)
             access_token = config.get(ConfigKeys.MISSKEY_ACCESS_TOKEN)
@@ -73,7 +72,6 @@ class MisskeyBot:
         now_utc = datetime.now(timezone.utc)
         self.last_auto_post_time = now_utc - timedelta(hours=24)
         self.posts_today = 0
-        self.today = now_utc.date()
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
         self.running = False
         self.tasks = []
@@ -210,7 +208,6 @@ class MisskeyBot:
 
     def _reset_daily_post_count(self) -> None:
         self.posts_today = 0
-        self.today = datetime.now(timezone.utc).date()
         logger.debug("已重置每日发帖计数")
 
     async def _start_websocket(self) -> None:
@@ -579,9 +576,6 @@ class MisskeyBot:
             logger.error(f"自动发帖时出错: {e}")
 
     def _check_auto_post_limits(self) -> bool:
-        current_date = datetime.now(timezone.utc).date()
-        if current_date != self.today:
-            self._reset_daily_post_count()
         max_posts = self.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
         if self.posts_today >= max_posts:
             logger.debug(f"今日发帖数量已达上限 ({max_posts})，跳过自动发帖")
@@ -691,48 +685,19 @@ class MisskeyBot:
 
     def _is_message_after_startup(self, message: Dict[str, Any]) -> bool:
         try:
-            created_at = (
-                message.get("createdAt")
-                or message.get("created_at")
-                or message.get("timestamp")
-            )
+            created_at = message.get("createdAt")
             if not created_at:
                 logger.debug(f"缺少时间戳信息: {message.get('id', 'unknown')}")
                 return False
-            message_time = self._parse_message_timestamp(created_at)
-            if message_time is None:
+            if not isinstance(created_at, str):
+                logger.debug(f"时间戳类型错误: {type(created_at)}")
                 return False
-            return self._compare_message_time(message_time)
+            message_time = datetime.fromisoformat(created_at)
+            is_after = message_time > self.startup_time
+            logger.debug(
+                f"时间检查 - 消息时间: {message_time.isoformat()}, 启动时间: {self.startup_time.isoformat()}, 结果: {is_after}"
+            )
+            return is_after
         except (ValueError, TypeError, AttributeError) as e:
             logger.debug(f"检查时间时出错: {e}")
             return False
-
-    def _parse_message_timestamp(self, created_at) -> Optional[datetime]:
-        if isinstance(created_at, str):
-            try:
-                message_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                return (
-                    message_time
-                    if message_time.tzinfo
-                    else message_time.replace(tzinfo=timezone.utc)
-                )
-            except ValueError:
-                logger.debug(f"无法解析时间戳格式: {created_at}")
-                return None
-        elif isinstance(created_at, (int, float)):
-            return datetime.fromtimestamp(
-                created_at / 1000 if created_at > 1e10 else created_at, tz=timezone.utc
-            )
-        else:
-            logger.debug(f"未知的时间戳类型: {type(created_at)}")
-            return None
-
-    def _compare_message_time(self, message_time: datetime) -> bool:
-        startup_time = self.startup_time
-        if startup_time.tzinfo is None:
-            startup_time = startup_time.replace(tzinfo=timezone.utc)
-        is_after = message_time > startup_time
-        logger.debug(
-            f"时间检查 - 消息时间: {message_time.isoformat()}, 启动时间: {self.startup_time.isoformat()}, 结果: {is_after}"
-        )
-        return is_after

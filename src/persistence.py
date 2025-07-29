@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
@@ -250,7 +250,7 @@ class PersistenceManager:
     async def set_plugin_data(self, plugin_name: str, key: str, value: str) -> None:
         await self._execute(
             "INSERT OR REPLACE INTO plugin_data (plugin_name, key, value, updated_at) VALUES (?, ?, ?, ?)",
-            (plugin_name, key, value, datetime.now(timezone.utc)),
+            (plugin_name, key, value, datetime.now()),
             "update",
         )
 
@@ -262,7 +262,7 @@ class PersistenceManager:
         return await self._execute(query, params, "update")
 
     async def cleanup_old_records(self, days: int = 30) -> int:
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff_date = datetime.now() - timedelta(days=days)
         mentions_deleted = await self._execute(
             "DELETE FROM processed_mentions WHERE processed_at < ?",
             (cutoff_date,),
@@ -281,7 +281,7 @@ class PersistenceManager:
         return total_deleted
 
     async def get_statistics(self) -> Dict[str, Any]:
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now().date()
         queries = [
             "SELECT COUNT(*) FROM processed_mentions",
             "SELECT COUNT(*) FROM processed_messages",
