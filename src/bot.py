@@ -32,7 +32,7 @@ from .constants import (
     DEFAULT_ERROR_MESSAGE,
     ConfigKeys,
 )
-from .utils import retry_async, extract_user_id, extract_username
+from .utils import retry_async, extract_user_id, extract_username, get_memory_usage
 
 
 class MisskeyBot:
@@ -127,7 +127,9 @@ class MisskeyBot:
         await self._initialize_services()
         await self._setup_scheduler()
         await self._setup_streaming()
-        logger.info("服务组件就绪，开始监听...")
+        logger.info("服务组件就绪，等待新任务...")
+        memory_usage = get_memory_usage()
+        logger.debug(f"内存使用: {memory_usage['rss_mb']} MB")
 
     async def _initialize_services(self) -> None:
         await self.persistence.initialize()

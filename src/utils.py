@@ -36,12 +36,8 @@ def get_system_info() -> Dict[str, Any]:
 
 async def log_system_info() -> None:
     system_info = get_system_info()
-    logger.info(
-        f"运行环境: Python {system_info['python_version']}, {system_info['platform']}, CPU 核心: {system_info['cpu_count']}, 内存: {system_info['memory_total_gb']} GB"
-    )
-    memory_usage = get_memory_usage()
-    logger.info(
-        f"内存使用: {memory_usage['rss_mb']} MB (物理), {memory_usage['vms_mb']} MB (虚拟), {memory_usage['percent']:.2f}%"
+    logger.debug(
+        f"运行环境: Python {system_info['python_version']}, {system_info['platform']}, CPU 核心: {system_info['cpu_count']}, 内存: {system_info['memory_total_gb']} GB, 进程ID: {system_info['process_id']}"
     )
 
 
@@ -62,7 +58,7 @@ async def monitor_memory_usage() -> None:
         try:
             memory_usage = get_memory_usage()
             if memory_usage["rss_mb"] > threshold_mb:
-                logger.warning(f"内存使用过高: {memory_usage['rss_mb']} MB")
+                logger.warning(f"内存使用较高: {memory_usage['rss_mb']} MB")
             await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
             break
