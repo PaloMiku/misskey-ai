@@ -7,7 +7,6 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 
-from cachetools import LRUCache
 from loguru import logger
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -17,6 +16,7 @@ from .misskey_api import MisskeyAPI
 from .streaming import StreamingClient
 from .persistence import PersistenceManager
 from .plugin_manager import PluginManager
+from .polling import PollingManager
 from .interfaces import ITextGenerator, IAPIClient, IStreamingClient
 from .exceptions import (
     ConfigurationError,
@@ -26,7 +26,6 @@ from .exceptions import (
     WebSocketConnectionError,
 )
 from .constants import (
-    MAX_CACHE,
     WS_MAX_RETRIES,
     ERROR_MESSAGES,
     DEFAULT_ERROR_MESSAGE,
@@ -67,8 +66,9 @@ class MisskeyBot:
             raise ConfigurationError(f"初始化失败: {e}")
         self.persistence = PersistenceManager(config.get(ConfigKeys.DB_PATH))
         self.plugin_manager = PluginManager(config, persistence=self.persistence)
-        self.processed_mentions = LRUCache(maxsize=MAX_CACHE)
-        self.processed_messages = LRUCache(maxsize=MAX_CACHE)
+        self.polling_manager = PollingManager(
+            config, self.misskey, self.persistence, self.startup_time
+        )
         now_utc = datetime.now(timezone.utc)
         self.last_auto_post_time = now_utc - timedelta(hours=24)
         self.posts_today = 0
@@ -90,31 +90,6 @@ class MisskeyBot:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.stop()
         return False
-
-    async def _load_recent_processed_items(self) -> None:
-        try:
-            recent_mentions = await self.persistence.get_recent_mentions(MAX_CACHE)
-            recent_messages = await self.persistence.get_recent_messages(MAX_CACHE)
-            self.processed_mentions.update(
-                {m["note_id"]: True for m in recent_mentions}
-            )
-            self.processed_messages.update(
-                {m["message_id"]: True for m in recent_messages}
-            )
-            logger.debug(
-                f"已加载 {len(recent_mentions)} 个提及和 {len(recent_messages)} 个聊天到缓存"
-            )
-        except (ValueError, TypeError, KeyError, OSError) as e:
-            logger.warning(f"加载已处理 ID 到缓存时出错: {e}，将从空状态开始")
-
-    async def _cleanup_old_processed_items(self) -> None:
-        try:
-            cleanup_days = self.config.get(ConfigKeys.DB_CLEANUP_DAYS)
-            deleted_count = await self.persistence.cleanup_old_records(cleanup_days)
-            if deleted_count > 0:
-                logger.debug(f"已清理 {deleted_count} 条过期记录")
-        except (ValueError, OSError) as e:
-            logger.error(f"清理旧记录时出错: {e}")
 
     async def start(self) -> None:
         if self.running:
@@ -138,14 +113,15 @@ class MisskeyBot:
         except (APIConnectionError, AuthenticationError, ValueError) as e:
             logger.error(f"连接 Misskey 实例失败: {e}")
             self.bot_user_id = None
-        await self._load_recent_processed_items()
+        await self.polling_manager.load_recent_processed_items()
+        self.polling_manager.set_handlers(self._handle_mention, self._handle_message)
         await self.plugin_manager.load_plugins()
         await self.plugin_manager.on_startup()
 
     async def _setup_scheduler(self) -> None:
         cron_jobs = [
             (self._reset_daily_post_count, 0),
-            (self._cleanup_old_processed_items, 1),
+            (self.polling_manager.cleanup_old_processed_items, 1),
             (self.persistence.vacuum, 2),
         ]
         for func, hour in cron_jobs:
@@ -171,11 +147,11 @@ class MisskeyBot:
                 task = asyncio.create_task(self._maintain_websocket())
             else:
                 logger.warning("WebSocket 重试失败，启用轮询模式")
-                task = asyncio.create_task(self._poll_mentions())
+                task = asyncio.create_task(self.polling_manager.start_polling())
             self.tasks.append(task)
         except (WebSocketConnectionError, APIConnectionError, OSError) as e:
             logger.error(f"WebSocket 启动失败: {e}，启用轮询模式")
-            task = asyncio.create_task(self._poll_mentions())
+            task = asyncio.create_task(self.polling_manager.start_polling())
             self.tasks.append(task)
 
     async def stop(self) -> None:
@@ -198,8 +174,8 @@ class MisskeyBot:
             await self.misskey.close()
             await self.deepseek.close()
             await self.persistence.close()
-            self.processed_mentions.clear()
-            self.processed_messages.clear()
+            self.polling_manager.stop_polling()
+            self.polling_manager.clear_caches()
         except (OSError, ValueError, TypeError) as e:
             logger.error(f"停止机器人时出错: {e}")
         finally:
@@ -245,7 +221,7 @@ class MisskeyBot:
 
     def _switch_to_polling(self, reason: str) -> None:
         logger.warning(f"{reason}，切换到轮询模式")
-        task = asyncio.create_task(self._poll_mentions())
+        task = asyncio.create_task(self.polling_manager.start_polling())
         self.tasks.append(task)
 
     async def _cleanup_websocket_resources(self) -> None:
@@ -255,70 +231,6 @@ class MisskeyBot:
             logger.debug("WebSocket 资源清理完成")
         except (OSError, ValueError) as e:
             logger.error(f"清理 WebSocket 资源时出错: {e}")
-
-    async def _poll_mentions(self) -> None:
-        base_delay = self.config.get(ConfigKeys.BOT_RESPONSE_POLLING_INTERVAL)
-
-        async def poll_once():
-            if self.config.get(ConfigKeys.BOT_RESPONSE_MENTION_ENABLED):
-                mentions = await self.misskey.get_mentions(limit=100)
-                if mentions:
-                    logger.debug(f"轮询获取到 {len(mentions)} 个提及")
-                await self._process_polled_items(
-                    mentions, "mention", self._handle_mention
-                )
-            if self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_ENABLED):
-                await self._poll_chat_messages()
-            await asyncio.sleep(base_delay)
-
-        while self.running:
-            try:
-                await poll_once()
-            except asyncio.CancelledError:
-                break
-            except (APIConnectionError, APIRateLimitError, ValueError, OSError) as e:
-                if not self.running:
-                    break
-                logger.error(f"轮询错误: {e}")
-                await asyncio.sleep(base_delay)
-
-    async def _poll_chat_messages(self) -> None:
-        try:
-            messages = await self.misskey.get_all_chat_messages(limit=100)
-            if messages:
-                logger.debug(f"轮询获取到 {len(messages)} 条聊天")
-            await self._process_polled_items(messages, "message", self._handle_message)
-        except (APIConnectionError, APIRateLimitError, ValueError, OSError) as e:
-            logger.error(f"轮询聊天时出错: {e}")
-            logger.debug(f"轮询聊天详细错误: {e}", exc_info=True)
-
-    async def _process_polled_items(self, items, item_type: str, handler) -> None:
-        cache = (
-            self.processed_mentions
-            if item_type == "mention"
-            else self.processed_messages
-        )
-        persistence_check = (
-            self.persistence.is_mention_processed
-            if item_type == "mention"
-            else self.persistence.is_message_processed
-        )
-        for item in items:
-            item_id = item.get("id")
-            if item_id and item_id not in cache:
-                if not await persistence_check(item_id):
-                    if self._is_message_after_startup(item):
-                        await handler(item)
-                    else:
-                        user_id = extract_user_id(item)
-                        username = extract_username(item)
-                        await self._mark_processed(
-                            item_id, user_id, username, item_type
-                        )
-                else:
-                    logger.debug(f"{item_type}已在数据库中标记为已处理: {item_id}")
-            else:
-                logger.debug(f"{item_type}已在缓存中: {item_id}")
 
     async def _handle_mention(self, note: Dict[str, Any]) -> None:
         if not self.config.get(ConfigKeys.BOT_RESPONSE_MENTION_ENABLED):
@@ -365,7 +277,7 @@ class MisskeyBot:
     async def _process_mention(
         self, mention_data: Dict[str, Any], note: Dict[str, Any]
     ) -> None:
-        await self._mark_processed(
+        await self.polling_manager.mark_processed(
             mention_data["mention_id"],
             mention_data["user_id"],
             mention_data["username"],
@@ -446,10 +358,9 @@ class MisskeyBot:
             logger.debug("缺少 ID，跳过处理")
             return
         logger.debug(f"聊天数据: {json.dumps(message, ensure_ascii=False, indent=2)}")
-        if (
-            message_id in self.processed_messages
-            or await self.persistence.is_message_processed(message_id)
-        ):
+        if self.polling_manager.is_message_processed(
+            message_id
+        ) or await self.persistence.is_message_processed(message_id):
             logger.debug(f"已处理: {message_id}")
             return
         try:
@@ -475,9 +386,13 @@ class MisskeyBot:
         )
         if self.bot_user_id and user_id == self.bot_user_id:
             logger.debug(f"跳过自己发送的聊天: {message_id}")
-            await self._mark_processed(message_id, user_id, username, "message")
+            await self.polling_manager.mark_processed(
+                message_id, user_id, username, "message"
+            )
             return
-        await self._mark_processed(message_id, user_id, username, "message")
+        await self.polling_manager.mark_processed(
+            message_id, user_id, username, "message"
+        )
         if not (user_id and text):
             logger.debug(f"聊天缺少必要信息 - 用户 ID: {user_id}, 文本: {bool(text)}")
             return
@@ -672,32 +587,3 @@ class MisskeyBot:
             "max_tokens": self.config.get(ConfigKeys.DEEPSEEK_MAX_TOKENS),
             "temperature": self.config.get(ConfigKeys.DEEPSEEK_TEMPERATURE),
         }
-
-    async def _mark_processed(
-        self, item_id: str, user_id: str, username: str, item_type: str
-    ) -> None:
-        if item_type == "mention":
-            await self.persistence.mark_mention_processed(item_id, user_id, username)
-            self.processed_mentions[item_id] = True
-        elif item_type == "message":
-            await self.persistence.mark_message_processed(item_id, user_id, "private")
-            self.processed_messages[item_id] = True
-
-    def _is_message_after_startup(self, message: Dict[str, Any]) -> bool:
-        try:
-            created_at = message.get("createdAt")
-            if not created_at:
-                logger.debug(f"缺少时间戳信息: {message.get('id', 'unknown')}")
-                return False
-            if not isinstance(created_at, str):
-                logger.debug(f"时间戳类型错误: {type(created_at)}")
-                return False
-            message_time = datetime.fromisoformat(created_at)
-            is_after = message_time > self.startup_time
-            logger.debug(
-                f"时间检查 - 消息时间: {message_time.isoformat()}, 启动时间: {self.startup_time.isoformat()}, 结果: {is_after}"
-            )
-            return is_after
-        except (ValueError, TypeError, AttributeError) as e:
-            logger.debug(f"检查时间时出错: {e}")
-            return False
