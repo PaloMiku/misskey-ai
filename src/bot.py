@@ -199,8 +199,8 @@ class MisskeyBot:
         try:
             while self.running and self.streaming.is_connected:
                 tasks_to_check = [
-                    ('heartbeat_task', '心跳任务'),
-                    ('message_task', '消息处理任务')
+                    ("heartbeat_task", "心跳任务"),
+                    ("message_task", "消息处理任务"),
                 ]
                 for task_attr, task_name in tasks_to_check:
                     if hasattr(self.streaming, task_attr):

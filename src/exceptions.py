@@ -40,6 +40,4 @@ class APIRateLimitError(MisskeyBotError):
     def __init__(self, service_name: str, retry_after: int = None):
         self.service_name = service_name
         self.retry_after = retry_after
-        super().__init__(
-            f"{service_name} API 速率限制{f'，请在{retry_after}秒后重试' if retry_after else ''}"
-        )
+        super().__init__(f"{service_name} API 速率限制")
