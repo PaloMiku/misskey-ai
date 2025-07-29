@@ -199,6 +199,9 @@ class StreamingClient(IStreamingClient):
                 await asyncio.sleep(WS_HEARTBEAT_INTERVAL)
             except (aiohttp.ClientError, OSError, ValueError) as e:
                 logger.error(f"心跳错误: {e}")
+                self.running = False
+                if self.ws_connection and not self.ws_connection.closed:
+                    await self.ws_connection.close()
                 break
 
     async def _send_pong(self) -> None:
@@ -220,12 +223,17 @@ class StreamingClient(IStreamingClient):
                         logger.error(f"解码 WebSocket 消息失败: {e}")
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     logger.error(f"WebSocket 错误: {self.ws_connection.exception()}")
+                    self.running = False
                     break
                 elif msg.type == aiohttp.WSMsgType.CLOSE:
                     logger.info("WebSocket 连接已关闭")
+                    self.running = False
                     break
             except (aiohttp.ClientError, OSError, ValueError, TypeError) as e:
                 logger.error(f"处理 WebSocket 消息时出错: {e}")
+                self.running = False
+                if self.ws_connection and not self.ws_connection.closed:
+                    await self.ws_connection.close()
                 break
 
     async def _process_message(self, data: Dict[str, Any]) -> None:

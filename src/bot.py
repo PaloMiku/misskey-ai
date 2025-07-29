@@ -198,6 +198,16 @@ class MisskeyBot:
     async def _maintain_websocket(self) -> None:
         try:
             while self.running and self.streaming.is_connected:
+                tasks_to_check = [
+                    ('heartbeat_task', '心跳任务'),
+                    ('message_task', '消息处理任务')
+                ]
+                for task_attr, task_name in tasks_to_check:
+                    if hasattr(self.streaming, task_attr):
+                        task = getattr(self.streaming, task_attr)
+                        if task and task.done():
+                            logger.warning(f"{task_name}异常结束，重试中...")
+                            raise WebSocketConnectionError(f"{task_name}异常结束")
                 await asyncio.sleep(1)
         except asyncio.CancelledError:
             logger.debug("WebSocket 维护任务被取消")

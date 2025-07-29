@@ -32,11 +32,7 @@ class APIConnectionError(MisskeyBotError):
 class WebSocketConnectionError(MisskeyBotError):
     def __init__(self, message: str = None, reconnect_attempts: int = None):
         self.reconnect_attempts = reconnect_attempts
-        error_msg = (
-            f"WebSocket 连接失败 (重试次数: {reconnect_attempts}): {message or 'WebSocket 连接中断'}"
-            if reconnect_attempts is not None
-            else (message or "WebSocket 连接失败")
-        )
+        error_msg = message or "WebSocket 连接失败"
         super().__init__(error_msg)
 
 
