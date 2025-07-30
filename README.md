@@ -47,18 +47,18 @@ bot:
     enabled: true                                   # 是否启用自动发帖
     interval_minutes: 180                           # 发帖间隔（分钟）
     max_posts_per_day: 8                            # 每日最大发帖数量（凌晨 0 点重置计数器）
-    visibility: "public"                            # 自动发帖可见性（public/home/followers/specified）
-    prompt: |                                       # 自动发帖提示词
+    visibility: "public"                            # 发帖可见性（public/home/followers/specified）
+    prompt: |                                       # 发帖提示词
       生成一篇有趣、有见解的社交媒体帖子。
 
   response:
     mention_enabled: true                           # 是否响应提及（@）
-    chat_enabled: true                              # 是否响应聊天消息
+    chat_enabled: true                              # 是否响应聊天
     chat_memory: 10                                 # 聊天上下文记忆长度（条）
-    polling_interval: 60                            # 消息轮询间隔（秒）
+    polling_interval: 60                            # 轮询模式间隔（秒）
 
 db:
-  cleanup_days: 30                                  # SQLite 旧消息保留天数
+  cleanup_days: 30                                  # SQLite 旧消息 ID 保留天数
 
 log:
   level: "INFO"                                     # 日志级别 (DEBUG/INFO/WARNING/ERROR)
@@ -121,13 +121,13 @@ BOT_SYSTEM_PROMPT=你是一个可爱的AI助手...                    # 系统�
 BOT_AUTO_POST_ENABLED=true                                 # 是否启用自动发帖
 BOT_AUTO_POST_INTERVAL=180                                 # 发帖间隔（分钟）
 BOT_AUTO_POST_MAX_PER_DAY=8                                # 每日最大发帖数量（凌晨 0 点重置计数器）
-BOT_AUTO_POST_VISIBILITY=public                            # 自动发帖可见性（public/home/followers/specified）
-BOT_AUTO_POST_PROMPT=生成一篇有趣、有见解的社交媒体帖子。      # 自动发帖提示词
+BOT_AUTO_POST_VISIBILITY=public                            # 发帖可见性（public/home/followers/specified）
+BOT_AUTO_POST_PROMPT=生成一篇有趣、有见解的社交媒体帖子。      # 发帖提示词
 BOT_RESPONSE_MENTION_ENABLED=true                          # 是否响应提及（@）
-BOT_RESPONSE_CHAT_ENABLED=true                             # 是否响应聊天消息
+BOT_RESPONSE_CHAT_ENABLED=true                             # 是否响应聊天
 BOT_RESPONSE_CHAT_MEMORY=10                                # 聊天上下文记忆长度（条）
-BOT_RESPONSE_POLLING_INTERVAL=60                           # 消息轮询间隔（秒）
-DB_CLEANUP_DAYS=30                                         # SQLite 旧消息保留天数
+BOT_RESPONSE_POLLING_INTERVAL=60                           # 轮询模式间隔（秒）
+DB_CLEANUP_DAYS=30                                         # SQLite 旧消息 ID 保留天数
 LOG_LEVEL=INFO                                             # 日志级别 (DEBUG/INFO/WARNING/ERROR)
 ```
 </details>
