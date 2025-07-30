@@ -153,7 +153,7 @@ class PersistenceManager:
                 elif fetch_type == "update":
                     await conn.commit()
                     return cursor.rowcount
-        except (aiosqlite.Error, OSError, ValueError) as e:
+        except aiosqlite.Error as e:
             if fetch_type in ("insert", "update"):
                 await conn.rollback()
                 logger.error(f"数据库{fetch_type}操作失败: {e}")
@@ -198,7 +198,7 @@ class PersistenceManager:
 
     async def get_processed_mentions_count(self) -> int:
         result = await self._execute("SELECT COUNT(*) FROM processed_mentions")
-        return result[0] if result else 0
+        return result[0]
 
     async def is_message_processed(self, message_id: str) -> bool:
         return bool(
@@ -238,7 +238,7 @@ class PersistenceManager:
 
     async def get_processed_messages_count(self) -> int:
         result = await self._execute("SELECT COUNT(*) FROM processed_messages")
-        return result[0] if result else 0
+        return result[0]
 
     async def get_plugin_data(self, plugin_name: str, key: str) -> Optional[str]:
         result = await self._execute(
@@ -282,27 +282,24 @@ class PersistenceManager:
 
     async def get_statistics(self) -> Dict[str, Any]:
         today = datetime.now().date()
-        queries = [
-            "SELECT COUNT(*) FROM processed_mentions",
-            "SELECT COUNT(*) FROM processed_messages",
-            "SELECT COUNT(*) FROM processed_mentions WHERE DATE(processed_at) = ?",
-            "SELECT COUNT(*) FROM processed_messages WHERE DATE(processed_at) = ?",
-            "SELECT COUNT(*) FROM plugin_data",
-            "SELECT COUNT(*) FROM plugin_data WHERE DATE(updated_at) = ?",
-        ]
-        params = [(), (), (today,), (today,), (), (today,)]
-        results = []
-        for query, param in zip(queries, params):
-            result = await self._execute(query, param)
-            results.append(result[0])
+        query = """
+        SELECT 
+            (SELECT COUNT(*) FROM processed_mentions) as total_mentions,
+            (SELECT COUNT(*) FROM processed_messages) as total_messages,
+            (SELECT COUNT(*) FROM processed_mentions WHERE DATE(processed_at) = ?) as today_mentions,
+            (SELECT COUNT(*) FROM processed_messages WHERE DATE(processed_at) = ?) as today_messages,
+            (SELECT COUNT(*) FROM plugin_data) as total_plugin_data,
+            (SELECT COUNT(*) FROM plugin_data WHERE DATE(updated_at) = ?) as today_plugin_data
+        """
+        result = await self._execute(query, (today, today, today))
         db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
         return {
-            "total_mentions": results[0],
-            "total_messages": results[1],
-            "today_mentions": results[2],
-            "today_messages": results[3],
-            "total_plugin_data": results[4],
-            "today_plugin_data": results[5],
+            "total_mentions": result[0],
+            "total_messages": result[1],
+            "today_mentions": result[2],
+            "today_messages": result[3],
+            "total_plugin_data": result[4],
+            "today_plugin_data": result[5],
             "db_size_bytes": db_size,
             "db_size_mb": round(db_size / 1024 / 1024, 2),
         }

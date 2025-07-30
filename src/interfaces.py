@@ -12,7 +12,7 @@ class IConfigProvider(ABC):
 
     @abstractmethod
     def get_typed(
-        self, key: str, default: Any = None, expected_type: type = None
+        self, key: str, default: Any = None, expected_type: Optional[type] = None
     ) -> Any:
         pass
 
@@ -31,7 +31,7 @@ class IAPIClient(ABC):
 
 class IStreamingClient(ABC):
     @abstractmethod
-    async def connect(self, channels: Optional[list] = None) -> None:
+    async def connect(self, channels: Optional[list[str]] = None) -> None:
         pass
 
     @abstractmethod
@@ -43,7 +43,7 @@ class IStreamingClient(ABC):
         pass
 
     @abstractmethod
-    def on_message(self, handler: Callable[[Dict[str, Any]], Any]) -> None:
+    def on_message(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
         pass
 
     @abstractmethod

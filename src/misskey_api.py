@@ -69,7 +69,7 @@ class MisskeyAPI(IAPIClient):
             raise AuthenticationError("Misskey API 权限不足，请求被拒绝")
         elif status == HTTP_TOO_MANY_REQUESTS:
             raise APIRateLimitError("Misskey API 速率限制")
-        return "retryable" if self._is_retryable_error(status) else "error"
+        return self._is_retryable_error(status)
 
     async def _process_response(self, response, endpoint: str):
         if response.status == HTTP_OK:
@@ -80,14 +80,11 @@ class MisskeyAPI(IAPIClient):
             except json.JSONDecodeError as e:
                 raise APIConnectionError("Misskey", f"API 返回无效 JSON: {e}")
 
-        status_result = self._handle_response_status(response, endpoint)
-        if status_result == "retryable":
-            error_text = await response.text()
-            raise APIConnectionError("Misskey", f"HTTP {response.status}: {error_text}")
-        else:
-            error_text = await response.text()
+        is_retryable = self._handle_response_status(response, endpoint)
+        error_text = await response.text()
+        if not is_retryable:
             logger.error(f"API 请求失败: {response.status} - {error_text}")
-            raise APIConnectionError("Misskey", f"HTTP {response.status}: {error_text}")
+        raise APIConnectionError("Misskey", f"HTTP {response.status}: {error_text}")
 
     @retry_async(
         max_retries=API_MAX_RETRIES,
@@ -96,7 +93,7 @@ class MisskeyAPI(IAPIClient):
     async def _make_request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        if not endpoint or not isinstance(endpoint, str) or not endpoint.strip():
+        if not endpoint or not endpoint.strip():
             raise ValueError("API 端点不能为空")
         if data is not None and not isinstance(data, dict):
             raise ValueError("请求数据必须是字典格式")
@@ -187,7 +184,9 @@ class MisskeyAPI(IAPIClient):
     async def get_mentions(
         self, limit: int = 10, since_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        data = {"limit": limit, **({"sinceId": since_id} if since_id else {})}
+        data = {"limit": limit}
+        if since_id:
+            data["sinceId"] = since_id
         return await self._make_request("notes/mentions", data)
 
     async def get_user(
@@ -211,11 +210,9 @@ class MisskeyAPI(IAPIClient):
     async def get_messages(
         self, user_id: str, limit: int = 10, since_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        data = {
-            "userId": user_id,
-            "limit": limit,
-            **({"sinceId": since_id} if since_id else {}),
-        }
+        data = {"userId": user_id, "limit": limit}
+        if since_id:
+            data["sinceId"] = since_id
         return await self._make_request("chat/messages/user-timeline", data)
 
     async def get_all_chat_messages(

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+from functools import reduce
 from pathlib import Path
 from typing import Any, Dict, Optional, TypeVar
 
@@ -32,7 +33,7 @@ class Config(IConfigProvider):
             self._validate_config()
         except yaml.YAMLError as e:
             raise ConfigurationError(f"配置文件格式错误: {e}")
-        except (FileNotFoundError, PermissionError, OSError, IOError) as e:
+        except (OSError, PermissionError) as e:
             raise ConfigurationError(f"配置文件读取错误: {e}")
         except (ValueError, TypeError, AttributeError) as e:
             raise ConfigurationError(f"加载配置文件未知错误: {e}")
@@ -103,7 +104,7 @@ class Config(IConfigProvider):
                 content = f.read().strip()
                 logger.debug(f"从文件加载配置: {file_path}")
                 return content
-        except (OSError, IOError, ValueError, UnicodeDecodeError) as e:
+        except (OSError, UnicodeDecodeError) as e:
             logger.debug(f"无法从文件加载配置 {file_path}: {e}，使用原始值")
             return file_path
 
@@ -115,8 +116,6 @@ class Config(IConfigProvider):
         return config_path in prompt_configs
 
     def get(self, key: str, default: Any = None) -> Any:
-        from functools import reduce
-
         try:
             return reduce(lambda d, k: d[k], key.split("."), self.config)
         except (KeyError, TypeError):
@@ -180,7 +179,9 @@ class Config(IConfigProvider):
                 except (OSError, PermissionError) as e:
                     raise ConfigurationError(f"无法创建{desc} {Path(path).parent}: {e}")
 
-    def get_typed(self, key: str, default: T = None, expected_type: type = None) -> T:
+    def get_typed(
+        self, key: str, default: T = None, expected_type: Optional[type] = None
+    ) -> T:
         value = self.get(key, default)
         if expected_type and value is not None and not isinstance(value, expected_type):
             raise ValueError(

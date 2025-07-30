@@ -104,12 +104,6 @@ class DeepSeekAPI(ITextGenerator):
             self.client.close()
             logger.debug("DeepSeek API 客户端连接已关闭")
 
-    def _handle_api_exceptions(self, e):
-        if isinstance(e, RateLimitError):
-            raise RateLimitError(f"DeepSeek API 速率限制: {e}")
-        else:
-            raise APIConnectionError(f"API 调用失败: {e}")
-
     def _build_messages(
         self, prompt: str, system_prompt: Optional[str] = None
     ) -> List[Dict[str, str]]:
@@ -127,19 +121,9 @@ class DeepSeekAPI(ITextGenerator):
         temperature: float = 0.8,
     ) -> str:
         messages = self._build_messages(prompt, system_prompt)
-        try:
-            return await self._call_api_common(
-                messages, max_tokens, temperature, "单轮文本"
-            )
-        except (
-            RateLimitError,
-            APITimeoutError,
-            Timeout,
-            APIError,
-            APIConnectionError,
-            OSError,
-        ) as e:
-            self._handle_api_exceptions(e)
+        return await self._call_api_common(
+            messages, max_tokens, temperature, "单轮文本"
+        )
 
     async def generate_chat_response(
         self,
@@ -147,20 +131,10 @@ class DeepSeekAPI(ITextGenerator):
         max_tokens: int = 1000,
         temperature: float = 0.8,
     ) -> str:
-        try:
-            result = await self._call_api_common(
-                messages, max_tokens, temperature, "多轮对话"
-            )
-            return result.strip()
-        except (
-            RateLimitError,
-            APITimeoutError,
-            Timeout,
-            APIError,
-            APIConnectionError,
-            OSError,
-        ) as e:
-            self._handle_api_exceptions(e)
+        result = await self._call_api_common(
+            messages, max_tokens, temperature, "多轮对话"
+        )
+        return result.strip()
 
     async def generate_post(
         self,

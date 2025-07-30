@@ -122,16 +122,12 @@ class PollingManager:
         if not handler:
             logger.warning(f"未设置 {item_type} 处理器")
             return
-        cache = (
-            self.processed_mentions
-            if item_type == "mention"
-            else self.processed_messages
-        )
-        persistence_check = (
-            self.persistence.is_mention_processed
-            if item_type == "mention"
-            else self.persistence.is_message_processed
-        )
+
+        type_config = {
+            "mention": (self.processed_mentions, self.persistence.is_mention_processed),
+            "message": (self.processed_messages, self.persistence.is_message_processed),
+        }
+        cache, persistence_check = type_config[item_type]
         for item in items:
             item_id = item.get("id")
             if item_id and item_id not in cache:
@@ -150,26 +146,32 @@ class PollingManager:
     async def mark_processed(
         self, item_id: str, user_id: str, username: str, item_type: str
     ) -> None:
-        if item_type == "mention":
-            await self.persistence.mark_mention_processed(item_id, user_id, username)
-            self.processed_mentions[item_id] = True
-        elif item_type == "message":
-            await self.persistence.mark_message_processed(item_id, user_id, "private")
-            self.processed_messages[item_id] = True
+        handlers = {
+            "mention": (
+                self.persistence.mark_mention_processed,
+                self.processed_mentions,
+                username,
+            ),
+            "message": (
+                self.persistence.mark_message_processed,
+                self.processed_messages,
+                "private",
+            ),
+        }
+        mark_func, cache, param = handlers[item_type]
+        await mark_func(item_id, user_id, param)
+        cache[item_id] = True
 
     def _is_message_after_startup(self, message: Dict[str, Any]) -> bool:
         try:
             created_at = message.get("createdAt")
-            if not created_at:
-                logger.debug(f"缺少时间戳信息: {message.get('id', 'unknown')}")
-                return False
-            if not isinstance(created_at, str):
-                logger.debug(f"时间戳类型错误: {type(created_at)}")
+            if not created_at or not isinstance(created_at, str):
+                logger.warning(f"时间戳无效: {message.get('id', 'unknown')}")
                 return False
             message_time = datetime.fromisoformat(created_at)
             is_after = message_time > self.startup_time
             logger.debug(
-                f"时间检查 - 消息时间: {message_time.isoformat()}, 启动时间: {self.startup_time.isoformat()}, 结果: {is_after}"
+                f"时间检查 - 消息: {message_time.isoformat()}, 启动: {self.startup_time.isoformat()}, 结果: {is_after}"
             )
             return is_after
         except (ValueError, TypeError, AttributeError) as e:

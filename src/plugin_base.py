@@ -4,13 +4,10 @@
 import asyncio
 from typing import Dict, Any, Optional, Callable
 
-import pluggy
 from loguru import logger
 
 from .interfaces import IPlugin
 from .utils import extract_username, extract_user_id
-
-hookimpl = pluggy.HookimplMarker("misskey_ai")
 
 
 class PluginContext:
@@ -62,39 +59,31 @@ class PluginBase(IPlugin):
         self._initialized = False
         return False
 
-    @hookimpl
     async def initialize(self) -> bool:
         return True
 
-    @hookimpl
     async def cleanup(self) -> None:
         await self._cleanup_registered_resources()
 
-    @hookimpl
     async def on_startup(self) -> None:
         pass
 
-    @hookimpl
     async def on_mention(
         self, _mention_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         return None
 
-    @hookimpl
     async def on_message(
         self, _message_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         return None
 
-    @hookimpl
     async def on_auto_post(self) -> Optional[Dict[str, Any]]:
         return None
 
-    @hookimpl
     async def on_shutdown(self) -> None:
         pass
 
-    @hookimpl
     def get_info(self) -> Dict[str, Any]:
         return {
             "name": self.name,
@@ -117,10 +106,14 @@ class PluginBase(IPlugin):
         logger.info(f"{self.name} 插件{action}{': ' + details if details else ''}")
 
     def _validate_plugin_response(self, response: Any) -> bool:
-        return (isinstance(response, dict) and
-                all(isinstance(response.get(k), t) for k, t in [
-                    ("handled", bool), ("plugin_name", str), ("response", str)
-                ] if k in response))
+        if not isinstance(response, dict):
+            return False
+        required_types = {"handled": bool, "plugin_name": str, "response": str}
+        return all(
+            isinstance(response.get(k), t)
+            for k, t in required_types.items()
+            if k in response
+        )
 
     def _register_resource(self, resource: Any, cleanup_method: str = "close") -> None:
         self._resources_to_cleanup.append((resource, cleanup_method))
@@ -137,6 +130,3 @@ class PluginBase(IPlugin):
             except (AttributeError, TypeError, RuntimeError, OSError) as e:
                 logger.error(f"插件 {self.name} 清理资源失败: {e}")
         self._resources_to_cleanup.clear()
-
-    def _check_resource_leaks(self) -> bool:
-        return bool(self._resources_to_cleanup)

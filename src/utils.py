@@ -44,9 +44,10 @@ async def log_system_info() -> None:
 def get_memory_usage() -> Dict[str, Any]:
     process = psutil.Process()
     memory_info = process.memory_info()
+    mb_factor = 1024 * 1024
     return {
-        "rss_mb": round(memory_info.rss / (1024 * 1024), 2),
-        "vms_mb": round(memory_info.vms / (1024 * 1024), 2),
+        "rss_mb": round(memory_info.rss / mb_factor, 2),
+        "vms_mb": round(memory_info.vms / mb_factor, 2),
         "percent": process.memory_percent(),
     }
 
@@ -76,19 +77,13 @@ def extract_user_id(message: Dict[str, Any]) -> Optional[str]:
 
 def extract_username(message: Dict[str, Any]) -> str:
     user_info = message.get("fromUser") or message.get("user", {})
-    return (
-        user_info.get("username", "unknown")
-        if isinstance(user_info, dict)
-        else "unknown"
-    )
+    if isinstance(user_info, dict):
+        return user_info.get("username", "unknown")
+    return "unknown"
 
 
 def health_check() -> bool:
     try:
-        memory_usage = get_memory_usage()
-        if memory_usage["percent"] > 90:
-            logger.warning(f"内存使用过高: {memory_usage['percent']}%")
-            return False
         return psutil.Process().is_running()
     except (OSError, ValueError, AttributeError) as e:
         logger.error(f"健康检查失败: {e}")

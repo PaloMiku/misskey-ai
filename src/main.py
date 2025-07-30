@@ -62,11 +62,10 @@ async def _setup_monitoring_and_signals() -> None:
         if sys.platform != "win32"
         else (signal.SIGINT, signal.SIGTERM)
     )
-    if sys.platform != "win32":
-        for sig in signals:
+    for sig in signals:
+        if sys.platform != "win32":
             loop.add_signal_handler(sig, _signal_handler, sig)
-    else:
-        for sig in signals:
+        else:
             signal.signal(sig, lambda s, f: _signal_handler(signal.Signals(s)))
 
 
@@ -78,7 +77,7 @@ def _signal_handler(sig):
 
 
 async def shutdown() -> None:
-    global bot, tasks, shutdown_event
+    global bot, tasks
     if hasattr(shutdown, "_called"):
         return
     shutdown._called = True
@@ -91,8 +90,6 @@ async def shutdown() -> None:
     tasks.clear()
     if bot:
         await bot.stop()
-    if shutdown_event and not shutdown_event.is_set():
-        shutdown_event.set()
     logger.info("机器人已关闭")
 
 

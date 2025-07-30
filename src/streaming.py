@@ -48,13 +48,13 @@ class StreamingClient(IStreamingClient):
     def on_mention(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
         self._add_event_handler("mention", handler)
 
-    def on_message(self, handler: Callable[[Dict[str, Any]], Any]) -> None:
+    def on_message(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
         self._add_event_handler("message", handler)
 
     def _add_event_handler(self, event_type: str, handler: Callable) -> None:
         self.event_handlers.setdefault(event_type, []).append(handler)
 
-    async def connect(self, channels: Optional[list] = None) -> None:
+    async def connect(self, channels: Optional[list[str]] = None) -> None:
         if self.running:
             logger.warning("Streaming 客户端已在运行")
             return
@@ -90,6 +90,10 @@ class StreamingClient(IStreamingClient):
             and self.running
         )
 
+    @property
+    def _ws_available(self) -> bool:
+        return self.ws_connection and not self.ws_connection.closed
+
     async def connect_channel(
         self, channel_type: ChannelType, params: Optional[Dict[str, Any]] = None
     ) -> str:
@@ -112,7 +116,7 @@ class StreamingClient(IStreamingClient):
                 "params": params or {},
             },
         }
-        if not (self.ws_connection and not self.ws_connection.closed):
+        if not self._ws_available:
             logger.error(f"WebSocket 连接不可用，无法连接频道: {channel_type.value}")
             raise WebSocketConnectionError("WebSocket 连接不可用")
         await self.ws_connection.send_json(message)
@@ -127,7 +131,7 @@ class StreamingClient(IStreamingClient):
             if ch_info["type"] == channel_type
         ]
         for channel_id in channels_to_remove:
-            if self.ws_connection and not self.ws_connection.closed:
+            if self._ws_available:
                 message = {"type": "disconnect", "body": {"id": channel_id}}
                 await self.ws_connection.send_json(message)
             del self.channels[channel_id]
@@ -169,23 +173,20 @@ class StreamingClient(IStreamingClient):
 
     async def _cleanup_failed_connection(self) -> None:
         try:
-            for conn in [self.ws_connection, self.session]:
-                if conn and not conn.closed:
-                    await conn.close()
-            self.ws_connection = self.session = self.message_task = None
+            await self._close_websocket()
         except (OSError, ValueError) as e:
             logger.debug(f"清理失败连接时出错: {e}")
 
     async def _disconnect_all_channels(self) -> None:
         for channel_id in list(self.channels.keys()):
-            message = {"type": "disconnect", "body": {"id": channel_id}}
-            if self.ws_connection and not self.ws_connection.closed:
+            if self._ws_available:
+                message = {"type": "disconnect", "body": {"id": channel_id}}
                 await self.ws_connection.send_json(message)
         self.channels.clear()
         logger.debug("已断开所有频道连接")
 
     async def _handle_messages(self) -> None:
-        while self.running and self.ws_connection and not self.ws_connection.closed:
+        while self.running and self._ws_available:
             try:
                 msg = await self.ws_connection.receive()
                 if msg is None:
@@ -208,7 +209,7 @@ class StreamingClient(IStreamingClient):
             except (aiohttp.ClientError, OSError, ValueError, TypeError) as e:
                 logger.error(f"处理 WebSocket 消息时出错: {e}")
                 self.running = False
-                if self.ws_connection and not self.ws_connection.closed:
+                if self._ws_available:
                     await self.ws_connection.close()
                 break
 
@@ -250,11 +251,12 @@ class StreamingClient(IStreamingClient):
         self, channel_type: ChannelType, event_data: Dict[str, Any]
     ) -> None:
         event_type = event_data.get("type")
-        event_body = event_data.get("body", {})
         if not event_type:
             await self._handle_no_event_type(channel_type, event_data)
-            return
-        await self._handle_typed_event(channel_type, event_type, event_body, event_data)
+        else:
+            await self._handle_typed_event(
+                channel_type, event_type, event_data.get("body", {}), event_data
+            )
 
     async def _handle_no_event_type(
         self, channel_type: ChannelType, event_data: Dict[str, Any]

@@ -1,18 +1,13 @@
 class MisskeyBotError(Exception):
     def __init__(self, message: str = None):
-        self.message = message or "发生了未知错误"
-        super().__init__(self.message)
+        super().__init__(message or "发生了未知错误")
 
 
 class ConfigurationError(MisskeyBotError):
     def __init__(self, message: str = None, config_path: str = None):
         self.config_path = config_path
-        error_msg = (
-            f"配置错误 ({config_path}): {message or '配置文件存在问题'}"
-            if config_path
-            else (message or "配置文件存在问题")
-        )
-        super().__init__(error_msg)
+        msg = message or "配置文件存在问题"
+        super().__init__(f"配置错误 ({config_path}): {msg}" if config_path else msg)
 
 
 class AuthenticationError(MisskeyBotError):
@@ -32,8 +27,7 @@ class APIConnectionError(MisskeyBotError):
 class WebSocketConnectionError(MisskeyBotError):
     def __init__(self, message: str = None, reconnect_attempts: int = None):
         self.reconnect_attempts = reconnect_attempts
-        error_msg = message or "WebSocket 连接失败"
-        super().__init__(error_msg)
+        super().__init__(message or "WebSocket 连接失败")
 
 
 class APIRateLimitError(MisskeyBotError):

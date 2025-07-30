@@ -69,8 +69,7 @@ class MisskeyBot:
         self.polling_manager = PollingManager(
             config, self.misskey, self.persistence, self.startup_time
         )
-        now_utc = datetime.now(timezone.utc)
-        self.last_auto_post_time = now_utc - timedelta(hours=24)
+        self.last_auto_post_time = self.startup_time - timedelta(hours=24)
         self.posts_today = 0
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
         self.running = False
@@ -581,7 +580,7 @@ class MisskeyBot:
         error_type = type(error).__name__
         self.error_counts[error_type] = self.error_counts.get(error_type, 0) + 1
         logger.error(f"错误类型: {error_type}, 上下文: {context}, 详情: {str(error)}")
-        return ERROR_MESSAGES.get(type(error).__name__, DEFAULT_ERROR_MESSAGE)
+        return ERROR_MESSAGES.get(error_type, DEFAULT_ERROR_MESSAGE)
 
     def get_error_stats(self) -> Dict[str, int]:
         return self.error_counts.copy()

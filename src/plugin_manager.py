@@ -2,13 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import importlib
 import importlib.util
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 import yaml
-import pluggy
 from loguru import logger
 
 from .plugin_base import PluginBase
@@ -26,10 +24,7 @@ class PluginManager:
         self.config = config
         self.plugins_dir = Path(plugins_dir)
         self.plugins: Dict[str, PluginBase] = {}
-        self.plugin_configs: Dict[str, Dict[str, Any]] = {}
         self.persistence = persistence
-
-        self.pm = pluggy.PluginManager("misskey_ai")
 
     async def __aenter__(self):
         return self
@@ -62,7 +57,7 @@ class PluginManager:
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 return yaml.safe_load(f) or {}
-        except (OSError, IOError, yaml.YAMLError, UnicodeDecodeError) as e:
+        except (OSError, yaml.YAMLError, UnicodeDecodeError) as e:
             logger.error(f"加载插件 {plugin_dir.name} 配置文件时出错: {e}")
             return {}
 
@@ -84,8 +79,6 @@ class PluginManager:
                 plugin_class, plugin_dir.name, plugin_config
             )
             self.plugins[plugin_dir.name] = plugin_instance
-            self.plugin_configs[plugin_dir.name] = plugin_config
-            self.pm.register(plugin_instance)
             status = "启用" if plugin_instance.enabled else "禁用"
             logger.debug(f"已发现插件: {plugin_dir.name} (状态: {status})")
         except (ImportError, AttributeError, TypeError, OSError) as e:
