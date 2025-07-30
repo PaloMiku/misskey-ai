@@ -13,7 +13,7 @@ from loguru import logger
 
 from .exceptions import WebSocketConnectionError
 from .interfaces import IStreamingClient
-from .constants import WS_HEARTBEAT_INTERVAL, WS_TIMEOUT, MAX_CACHE
+from .constants import WS_TIMEOUT, MAX_CACHE
 
 
 class ChannelType(Enum):
@@ -26,7 +26,6 @@ class StreamingClient(IStreamingClient):
         self.access_token = access_token
         self.ws_connection: Optional[aiohttp.ClientWebSocketResponse] = None
         self.session: Optional[aiohttp.ClientSession] = None
-        self.heartbeat_task: Optional[asyncio.Task] = None
         self.message_task: Optional[asyncio.Task] = None
         self.channels: Dict[str, Dict[str, Any]] = {}
         self.event_handlers: Dict[str, List[Callable]] = {}
@@ -116,7 +115,7 @@ class StreamingClient(IStreamingClient):
         if not (self.ws_connection and not self.ws_connection.closed):
             logger.error(f"WebSocket 连接不可用，无法连接频道: {channel_type.value}")
             raise WebSocketConnectionError("WebSocket 连接不可用")
-        await self.ws_connection.send_str(json.dumps(message))
+        await self.ws_connection.send_json(message)
         self.channels[channel_id] = {"type": channel_type, "params": params or {}}
         logger.debug(f"已连接频道: {channel_type.value} (ID: {channel_id})")
         return channel_id
@@ -130,7 +129,7 @@ class StreamingClient(IStreamingClient):
         for channel_id in channels_to_remove:
             if self.ws_connection and not self.ws_connection.closed:
                 message = {"type": "disconnect", "body": {"id": channel_id}}
-                await self.ws_connection.send_str(json.dumps(message))
+                await self.ws_connection.send_json(message)
             del self.channels[channel_id]
         logger.debug(f"已断开频道连接: {channel_type.value}")
 
@@ -147,9 +146,8 @@ class StreamingClient(IStreamingClient):
         try:
             self.ws_connection = await self.session.ws_connect(ws_url)
             logger.debug(f"WebSocket 连接成功: {safe_url}")
-            self.heartbeat_task = asyncio.create_task(self._heartbeat())
             self.message_task = asyncio.create_task(self._handle_messages())
-            logger.debug("WebSocket 心跳和消息处理任务已启动")
+            logger.debug("WebSocket 消息处理任务已启动")
         except (aiohttp.ClientError, OSError, ValueError, TypeError) as e:
             await self._cleanup_failed_connection()
             logger.error(f"WebSocket 连接失败: {e}")
@@ -157,28 +155,24 @@ class StreamingClient(IStreamingClient):
             raise WebSocketConnectionError(f"WebSocket 连接失败: {e}")
 
     async def _close_websocket(self) -> None:
-        for task in [self.heartbeat_task, self.message_task]:
-            if task and not task.done():
-                task.cancel()
+        if self.message_task:
+            if not self.message_task.done():
+                self.message_task.cancel()
                 try:
-                    await task
+                    await self.message_task
                 except asyncio.CancelledError:
                     pass
         for conn in [self.ws_connection, self.session]:
             if conn and not conn.closed:
                 await conn.close()
-        self.ws_connection = self.session = self.heartbeat_task = self.message_task = (
-            None
-        )
+        self.ws_connection = self.session = self.message_task = None
 
     async def _cleanup_failed_connection(self) -> None:
         try:
             for conn in [self.ws_connection, self.session]:
                 if conn and not conn.closed:
                     await conn.close()
-            self.ws_connection = self.session = self.heartbeat_task = (
-                self.message_task
-            ) = None
+            self.ws_connection = self.session = self.message_task = None
         except (OSError, ValueError) as e:
             logger.debug(f"清理失败连接时出错: {e}")
 
@@ -186,27 +180,9 @@ class StreamingClient(IStreamingClient):
         for channel_id in list(self.channels.keys()):
             message = {"type": "disconnect", "body": {"id": channel_id}}
             if self.ws_connection and not self.ws_connection.closed:
-                await self.ws_connection.send_str(json.dumps(message))
+                await self.ws_connection.send_json(message)
         self.channels.clear()
         logger.debug("已断开所有频道连接")
-
-    async def _heartbeat(self) -> None:
-        while self.running and self.ws_connection and not self.ws_connection.closed:
-            try:
-                await self.ws_connection.send_str(
-                    json.dumps({"type": "ping", "body": {}})
-                )
-                await asyncio.sleep(WS_HEARTBEAT_INTERVAL)
-            except (aiohttp.ClientError, OSError, ValueError) as e:
-                logger.error(f"心跳错误: {e}")
-                self.running = False
-                if self.ws_connection and not self.ws_connection.closed:
-                    await self.ws_connection.close()
-                break
-
-    async def _send_pong(self) -> None:
-        if self.ws_connection and not self.ws_connection.closed:
-            await self.ws_connection.send_str(json.dumps({"type": "pong", "body": {}}))
 
     async def _handle_messages(self) -> None:
         while self.running and self.ws_connection and not self.ws_connection.closed:
@@ -241,10 +217,6 @@ class StreamingClient(IStreamingClient):
         body = data.get("body", {})
         if message_type == "channel":
             await self._handle_channel_message(body)
-        elif message_type == "pong":
-            logger.debug("收到心跳响应")
-        elif message_type == "ping":
-            await self._send_pong()
         else:
             logger.debug(f"收到未知消息类型: {message_type}")
 
