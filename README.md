@@ -7,6 +7,13 @@
 支持兼容 OpenAI API 架构的其他模型<br>
 目前运行在：[oreeke.com/@ai](https://oreeke.com/@ai)
 
+<a href="https://www.python.org/downloads">
+    <img alt="python 3.11+" src="https://img.shields.io/badge/python-3.11+-3776ab.svg?style=for-the-badge&labelColor=303030"></a>
+<a href="./LICENSE">
+    <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-603669.svg?style=for-the-badge&labelColor=303030"></a>
+<a href="https://oreeke.com">
+    <img alt="join the fediverse" src="https://img.shields.io/badge/join_the-fediverse-ce6641.svg?style=for-the-badge&labelColor=303030"></a>
+
 </div>
 
 ## 开始
@@ -22,7 +29,7 @@ cd misskey-ai
 
 #### `a` 手动安装
 
-> 复制 `config.yaml.example` 为 `config.yaml` 并修改配置
+- 复制 `config.yaml.example` 为 `config.yaml` 并修改配置
 <details>
 <summary><kbd>📃 config.yaml</kbd></summary>
 
@@ -65,7 +72,6 @@ log:
 ```
 </details>
 
-> Python ≥ 3.11
 ```bash
 pip install -r requirements.txt
 python run.py
@@ -105,7 +111,7 @@ systemctl start misskey-ai.service
 
 #### `b` Docker Compose
 
-> 修改 `docker-compose.yaml` 中的环境变量
+- 修改 `docker-compose.yaml` 中的环境变量
 <details>
 <summary><kbd>📃 docker-compose.yaml</kbd></summary>
 
