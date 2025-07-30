@@ -7,6 +7,8 @@
 支持兼容 OpenAI API 架构的其他模型<br>
 目前运行在：[oreeke.com/@ai](https://oreeke.com/@ai)
 
+<br>
+
 <a href="https://www.python.org/downloads">
     <img alt="python 3.11+" src="https://img.shields.io/badge/python-3.11+-3776ab.svg?style=for-the-badge&labelColor=303030"></a>
 <a href="./LICENSE">
@@ -16,7 +18,7 @@
 
 </div>
 
-## 开始
+## 快速开始
 
 ### `1` 克隆仓库
 
