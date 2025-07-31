@@ -46,8 +46,8 @@ class ExamplePlugin(PluginBase):
                 username = self._extract_username(mention_data)
                 self._log_plugin_action("处理问候消息", f"来自 @{username}")
                 return self._create_response("你好！我是示例插件，很高兴见到你！")
-        except (ValueError, TypeError, AttributeError, KeyError) as e:
-            logger.error(f"Example 插件处理提及时出错: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError):
+            logger.error("Example 插件处理提及时出错")
         return None
 
     async def on_message(
@@ -63,8 +63,8 @@ class ExamplePlugin(PluginBase):
                 return self._create_response(
                     "插件系统工作正常！这是来自示例插件的回复。"
                 )
-        except (ValueError, TypeError, AttributeError, KeyError) as e:
-            logger.error(f"Example 插件处理消息时出错: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError):
+            logger.error("Example 插件处理消息时出错")
         return None
 
     async def on_auto_post(self) -> Optional[Dict[str, Any]]:
@@ -73,6 +73,6 @@ class ExamplePlugin(PluginBase):
         try:
             self._log_plugin_action("生成自动发布内容")
             return self._create_response("这是来自示例插件的自动发布内容！", "content")
-        except (ValueError, TypeError, AttributeError) as e:
-            logger.error(f"Example 插件生成自动发布内容时出错: {e}")
+        except (ValueError, TypeError, AttributeError):
+            logger.error("Example 插件生成自动发布内容时出错")
         return None

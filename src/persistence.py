@@ -153,10 +153,10 @@ class PersistenceManager:
                 elif fetch_type == "update":
                     await conn.commit()
                     return cursor.rowcount
-        except aiosqlite.Error as e:
+        except aiosqlite.Error:
             if fetch_type in ("insert", "update"):
                 await conn.rollback()
-                logger.error(f"数据库{fetch_type}操作失败: {e}")
+                logger.error(f"数据库{fetch_type}操作失败")
             raise
         finally:
             await self._pool.return_connection(conn)
@@ -309,8 +309,8 @@ class PersistenceManager:
         try:
             await conn.execute("VACUUM")
             logger.debug("数据库优化完成")
-        except (aiosqlite.Error, OSError) as e:
-            logger.error(f"数据库优化失败: {e}")
+        except (aiosqlite.Error, OSError):
+            logger.error("数据库优化失败")
         finally:
             await self._pool.return_connection(conn)
 

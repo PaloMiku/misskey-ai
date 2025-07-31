@@ -30,8 +30,8 @@ class TopicsPlugin(PluginBase):
                 "初始化完成", f"加载了 {len(self.topics)} 个主题关键词"
             )
             return True
-        except (OSError, ValueError, TypeError, AttributeError) as e:
-            logger.error(f"Topics 插件初始化失败: {e}")
+        except (OSError, ValueError, TypeError, AttributeError):
+            logger.error("Topics 插件初始化失败")
             return False
 
     async def cleanup(self) -> None:
@@ -45,8 +45,8 @@ class TopicsPlugin(PluginBase):
                 "plugin_prompt": self.prefix_template.format(topic=topic),
                 "plugin_name": self.name,
             }
-        except (ValueError, TypeError, AttributeError, OSError) as e:
-            logger.error(f"Topics 插件处理自动发帖失败: {e}")
+        except (ValueError, TypeError, AttributeError, OSError):
+            logger.error("Topics 插件处理自动发帖失败")
             return None
 
     async def _initialize_plugin_data(self) -> None:
@@ -59,8 +59,8 @@ class TopicsPlugin(PluginBase):
                     "Topics", "last_used_line", str(max(0, self.start_line - 1))
                 )
             logger.debug("Topics 插件数据库初始化完成")
-        except (OSError, ValueError, TypeError) as e:
-            logger.warning(f"Topics 插件数据库初始化失败: {e}")
+        except (OSError, ValueError, TypeError):
+            logger.warning("Topics 插件数据库初始化失败")
             raise
 
     def _use_default_topics(self) -> None:
@@ -81,8 +81,8 @@ class TopicsPlugin(PluginBase):
                 self._use_default_topics()
                 return
             logger.debug(f"成功加载 {len(self.topics)} 个主题关键词")
-        except (OSError, IOError, UnicodeDecodeError) as e:
-            logger.warning(f"加载主题文件失败: {e}")
+        except (OSError, IOError, UnicodeDecodeError):
+            logger.warning("加载主题文件失败")
             self._use_default_topics()
 
     async def _get_next_topic(self) -> str:
@@ -94,8 +94,8 @@ class TopicsPlugin(PluginBase):
             await self._update_last_used_line(last_used_line + 1)
             self._log_plugin_action("选择主题", f"{topic} (行数: {last_used_line + 1})")
             return topic
-        except (ValueError, TypeError, IndexError, OSError) as e:
-            logger.warning(f"获取下一个主题失败: {e}")
+        except (ValueError, TypeError, IndexError, OSError):
+            logger.warning("获取下一个主题失败")
             return self.topics[0] if self.topics else "生活"
 
     async def _get_last_used_line(self) -> int:
@@ -104,8 +104,8 @@ class TopicsPlugin(PluginBase):
                 "Topics", "last_used_line"
             )
             return int(result) if result else 0
-        except (ValueError, TypeError, OSError) as e:
-            logger.warning(f"获取上次使用行数失败: {e}")
+        except (ValueError, TypeError, OSError):
+            logger.warning("获取上次使用行数失败")
             return 0
 
     async def _update_last_used_line(self, line_number: int) -> None:
@@ -113,5 +113,5 @@ class TopicsPlugin(PluginBase):
             await self.persistence_manager.set_plugin_data(
                 "Topics", "last_used_line", str(line_number)
             )
-        except (ValueError, TypeError, OSError) as e:
-            logger.warning(f"更新上次使用行数失败: {e}")
+        except (ValueError, TypeError, OSError):
+            logger.warning("更新上次使用行数失败")

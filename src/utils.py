@@ -63,8 +63,8 @@ async def monitor_memory_usage() -> None:
             await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
             break
-        except (OSError, ValueError, AttributeError) as e:
-            logger.error(f"内存监控出现错误: {e}")
+        except (OSError, ValueError, AttributeError):
+            logger.error("内存监控出现错误")
             await asyncio.sleep(interval_seconds)
 
 
@@ -85,6 +85,6 @@ def extract_username(message: Dict[str, Any]) -> str:
 def health_check() -> bool:
     try:
         return psutil.Process().is_running()
-    except (OSError, ValueError, AttributeError) as e:
-        logger.error(f"健康检查失败: {e}")
+    except (OSError, ValueError, AttributeError):
+        logger.error("健康检查失败")
         return False

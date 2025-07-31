@@ -127,6 +127,6 @@ class PluginBase(IPlugin):
                         await method()
                     else:
                         method()
-            except (AttributeError, TypeError, RuntimeError, OSError) as e:
-                logger.error(f"插件 {self.name} 清理资源失败: {e}")
+            except (AttributeError, TypeError, RuntimeError, OSError):
+                logger.error(f"插件 {self.name} 清理资源失败")
         self._resources_to_cleanup.clear()

@@ -57,8 +57,8 @@ class PluginManager:
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 return yaml.safe_load(f) or {}
-        except (OSError, yaml.YAMLError, UnicodeDecodeError) as e:
-            logger.error(f"加载插件 {plugin_dir.name} 配置文件时出错: {e}")
+        except (OSError, yaml.YAMLError, UnicodeDecodeError):
+            logger.error(f"加载插件 {plugin_dir.name} 配置文件时出错")
             return {}
 
     async def _load_plugin(
@@ -81,8 +81,8 @@ class PluginManager:
             self.plugins[plugin_dir.name] = plugin_instance
             status = "启用" if plugin_instance.enabled else "禁用"
             logger.debug(f"已发现插件: {plugin_dir.name} (状态: {status})")
-        except (ImportError, AttributeError, TypeError, OSError) as e:
-            logger.warning(f"加载插件 {plugin_dir.name} 时出错: {e}")
+        except (ImportError, AttributeError, TypeError, OSError):
+            logger.warning(f"加载插件 {plugin_dir.name} 时出错")
 
     def _load_plugin_module(self, plugin_dir: Path, plugin_file: Path):
         spec = importlib.util.spec_from_file_location(
@@ -134,8 +134,8 @@ class PluginManager:
                 else:
                     logger.warning(f"插件 {plugin.name} 初始化失败")
                     plugin.set_enabled(False)
-            except (ValueError, TypeError, AttributeError, OSError) as e:
-                logger.error(f"初始化插件 {plugin.name} 时出错: {e}")
+            except (ValueError, TypeError, AttributeError, OSError):
+                logger.error(f"初始化插件 {plugin.name} 时出错")
                 plugin.set_enabled(False)
 
     async def cleanup_plugins(self) -> None:
@@ -143,8 +143,8 @@ class PluginManager:
             if plugin.enabled:
                 try:
                     await plugin.cleanup()
-                except (ValueError, TypeError, AttributeError, OSError) as e:
-                    logger.error(f"清理插件 {plugin.name} 时出错: {e}")
+                except (ValueError, TypeError, AttributeError, OSError):
+                    logger.error(f"清理插件 {plugin.name} 时出错")
 
     async def on_startup(self) -> None:
         await self.call_plugin_hook("on_startup")
@@ -176,8 +176,8 @@ class PluginManager:
                     result := await getattr(plugin, hook_name)(*args, **kwargs)
                 ) is not None:
                     results.append(result)
-            except (ValueError, TypeError, AttributeError, OSError) as e:
-                logger.error(f"调用插件 {plugin.name} 的 {hook_name} hook 时出错: {e}")
+            except (ValueError, TypeError, AttributeError, OSError):
+                logger.error(f"调用插件 {plugin.name} 的 {hook_name} hook 时出错")
         return results
 
     def get_plugin_info(self) -> List[Dict[str, Any]]:

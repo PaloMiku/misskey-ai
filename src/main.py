@@ -45,8 +45,8 @@ async def main() -> None:
         AuthenticationError,
         OSError,
         ValueError,
-    ) as e:
-        logger.error(f"启动过程中发生错误: {e}")
+    ):
+        logger.error("启动过程中发生错误")
         raise
     finally:
         await shutdown()
