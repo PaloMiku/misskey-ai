@@ -44,8 +44,8 @@ class WeatherPlugin(PluginBase):
                 data.get("note", data) if "note" in data and "type" in data else data
             )
             return await self._process_weather_message(note_data)
-        except (ValueError, TypeError, AttributeError, KeyError):
-            logger.error("Weather 插件处理提及时出错")
+        except (ValueError, KeyError) as e:
+            logger.error(f"Weather 插件处理提及时出错: {e}")
             return None
 
     async def on_message(
@@ -53,8 +53,8 @@ class WeatherPlugin(PluginBase):
     ) -> Optional[Dict[str, Any]]:
         try:
             return await self._process_weather_message(message_data)
-        except (ValueError, TypeError, AttributeError, KeyError):
-            logger.error("Weather 插件处理消息时出错")
+        except (ValueError, KeyError) as e:
+            logger.error(f"Weather 插件处理消息时出错: {e}")
             return None
 
     async def _process_weather_message(
@@ -117,8 +117,8 @@ class WeatherPlugin(PluginBase):
                         f"Weather API 2.5 请求失败，状态码: {response.status}"
                     )
                     return "抱歉，天气服务暂时不可用。"
-        except (aiohttp.ClientError, OSError, ValueError, KeyError):
-            logger.warning("获取天气信息时出错")
+        except (aiohttp.ClientError, OSError, ValueError, KeyError) as e:
+            logger.error(f"获取天气信息失败: {e}")
             return "抱歉，获取天气信息时出现错误。"
 
     async def _get_coordinates(self, city: str) -> Optional[tuple]:
@@ -136,8 +136,8 @@ class WeatherPlugin(PluginBase):
                 if "country" in location:
                     display_name += f", {location['country']}"
                 return location["lat"], location["lon"], display_name
-        except (aiohttp.ClientError, OSError, ValueError, KeyError):
-            logger.warning("获取城市坐标时出错")
+        except (aiohttp.ClientError, OSError, ValueError, KeyError) as e:
+            logger.error(f"获取城市坐标失败: {e}")
             return None
 
     def _format_weather_info_v25(self, data: Dict[str, Any], display_name: str) -> str:
@@ -163,6 +163,6 @@ class WeatherPlugin(PluginBase):
             if visibility > 0:
                 weather_text += f"\n👁️ 能见度: {visibility:.1f} km"
             return weather_text
-        except KeyError:
-            logger.error("解析 Weather API 2.5 天气数据时出错")
-            return "抱歉，天气数据格式异常。"
+        except (ValueError, KeyError, TypeError) as e:
+            logger.error(f"解析 Weather API 2.5 天气数据时出错: {e}")
+            return "抱歉，天气数据解析失败。"

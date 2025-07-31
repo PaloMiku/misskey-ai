@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
@@ -11,6 +11,8 @@ from loguru import logger
 
 from .config import Config
 from .constants import ConfigKeys
+
+__all__ = ("PersistenceManager", "ConnectionPool")
 
 
 class ConnectionPool:
@@ -60,9 +62,9 @@ class ConnectionPool:
 
 class PersistenceManager:
     def __init__(self, db_path: Optional[str] = None, max_connections: int = 10):
+        self.config = Config()
         if db_path is None:
-            config = Config()
-            db_path = config._get_builtin_default(ConfigKeys.DB_PATH)
+            db_path = self.config._get_builtin_default(ConfigKeys.DB_PATH)
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(exist_ok=True)
         self._pool = ConnectionPool(str(self.db_path), max_connections)
@@ -97,24 +99,6 @@ class PersistenceManager:
     async def _execute_schema(self, conn: aiosqlite.Connection) -> None:
         schema_statements = [
             """
-            CREATE TABLE IF NOT EXISTS processed_mentions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                note_id TEXT UNIQUE NOT NULL,
-                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_id TEXT,
-                username TEXT
-            )
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS processed_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id TEXT UNIQUE NOT NULL,
-                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_id TEXT,
-                chat_type TEXT
-            )
-            """,
-            """
             CREATE TABLE IF NOT EXISTS plugin_data (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 plugin_name TEXT NOT NULL,
@@ -126,10 +110,6 @@ class PersistenceManager:
             """,
         ]
         index_statements = [
-            "CREATE INDEX IF NOT EXISTS idx_mentions_note_id ON processed_mentions(note_id)",
-            "CREATE INDEX IF NOT EXISTS idx_mentions_processed_at ON processed_mentions(processed_at)",
-            "CREATE INDEX IF NOT EXISTS idx_messages_message_id ON processed_messages(message_id)",
-            "CREATE INDEX IF NOT EXISTS idx_messages_processed_at ON processed_messages(processed_at)",
             "CREATE INDEX IF NOT EXISTS idx_plugin_data_name_key ON plugin_data(plugin_name, key)",
         ]
         async with conn.execute("BEGIN TRANSACTION"):
@@ -153,92 +133,13 @@ class PersistenceManager:
                 elif fetch_type == "update":
                     await conn.commit()
                     return cursor.rowcount
-        except aiosqlite.Error:
+        except aiosqlite.Error as e:
             if fetch_type in ("insert", "update"):
                 await conn.rollback()
-                logger.error(f"数据库{fetch_type}操作失败")
+                logger.error(f"数据库{fetch_type}操作失败: {e}")
             raise
         finally:
             await self._pool.return_connection(conn)
-
-    async def is_mention_processed(self, note_id: str) -> bool:
-        return bool(
-            await self._execute(
-                "SELECT 1 FROM processed_mentions WHERE note_id = ? LIMIT 1", (note_id,)
-            )
-        )
-
-    async def mark_mention_processed(
-        self,
-        note_id: str,
-        user_id: Optional[str] = None,
-        username: Optional[str] = None,
-    ) -> None:
-        await self._execute(
-            "INSERT OR IGNORE INTO processed_mentions (note_id, user_id, username) VALUES (?, ?, ?)",
-            (note_id, user_id, username),
-            "insert",
-        )
-
-    async def get_recent_mentions(self, limit: int = 100) -> List[Dict[str, Any]]:
-        rows = await self._execute(
-            "SELECT note_id, processed_at, user_id, username FROM processed_mentions ORDER BY processed_at DESC LIMIT ?",
-            (limit,),
-            "all",
-        )
-        return [
-            {
-                "note_id": row[0],
-                "processed_at": row[1],
-                "user_id": row[2],
-                "username": row[3],
-            }
-            for row in rows
-        ]
-
-    async def get_processed_mentions_count(self) -> int:
-        result = await self._execute("SELECT COUNT(*) FROM processed_mentions")
-        return result[0]
-
-    async def is_message_processed(self, message_id: str) -> bool:
-        return bool(
-            await self._execute(
-                "SELECT 1 FROM processed_messages WHERE message_id = ? LIMIT 1",
-                (message_id,),
-            )
-        )
-
-    async def mark_message_processed(
-        self,
-        message_id: str,
-        user_id: Optional[str] = None,
-        chat_type: Optional[str] = None,
-    ) -> None:
-        await self._execute(
-            "INSERT OR IGNORE INTO processed_messages (message_id, user_id, chat_type) VALUES (?, ?, ?)",
-            (message_id, user_id, chat_type),
-            "insert",
-        )
-
-    async def get_recent_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
-        rows = await self._execute(
-            "SELECT message_id, processed_at, user_id, chat_type FROM processed_messages ORDER BY processed_at DESC LIMIT ?",
-            (limit,),
-            "all",
-        )
-        return [
-            {
-                "message_id": row[0],
-                "processed_at": row[1],
-                "user_id": row[2],
-                "chat_type": row[3],
-            }
-            for row in rows
-        ]
-
-    async def get_processed_messages_count(self) -> int:
-        result = await self._execute("SELECT COUNT(*) FROM processed_messages")
-        return result[0]
 
     async def get_plugin_data(self, plugin_name: str, key: str) -> Optional[str]:
         result = await self._execute(
@@ -261,45 +162,23 @@ class PersistenceManager:
         params = (plugin_name, key) if key else (plugin_name,)
         return await self._execute(query, params, "update")
 
-    async def cleanup_old_records(self, days: int = 30) -> int:
-        cutoff_date = datetime.now() - timedelta(days=days)
-        mentions_deleted = await self._execute(
-            "DELETE FROM processed_mentions WHERE processed_at < ?",
-            (cutoff_date,),
-            "update",
-        )
-        messages_deleted = await self._execute(
-            "DELETE FROM processed_messages WHERE processed_at < ?",
-            (cutoff_date,),
-            "update",
-        )
-        total_deleted = mentions_deleted + messages_deleted
-        if total_deleted > 0:
-            logger.debug(
-                f"已清理 {total_deleted} 条过期记录 (提及: {mentions_deleted}, 消息: {messages_deleted})"
-            )
-        return total_deleted
+    async def cleanup_old_records(self, days: Optional[int] = None) -> None:
+        if days is None:
+            days = self.config.get(ConfigKeys.DB_CLEANUP_DAYS)
+        pass
 
     async def get_statistics(self) -> Dict[str, Any]:
         today = datetime.now().date()
         query = """
-        SELECT 
-            (SELECT COUNT(*) FROM processed_mentions) as total_mentions,
-            (SELECT COUNT(*) FROM processed_messages) as total_messages,
-            (SELECT COUNT(*) FROM processed_mentions WHERE DATE(processed_at) = ?) as today_mentions,
-            (SELECT COUNT(*) FROM processed_messages WHERE DATE(processed_at) = ?) as today_messages,
+        SELECT
             (SELECT COUNT(*) FROM plugin_data) as total_plugin_data,
             (SELECT COUNT(*) FROM plugin_data WHERE DATE(updated_at) = ?) as today_plugin_data
         """
-        result = await self._execute(query, (today, today, today))
+        result = await self._execute(query, (today,))
         db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
         return {
-            "total_mentions": result[0],
-            "total_messages": result[1],
-            "today_mentions": result[2],
-            "today_messages": result[3],
-            "total_plugin_data": result[4],
-            "today_plugin_data": result[5],
+            "total_plugin_data": result[0],
+            "today_plugin_data": result[1],
             "db_size_bytes": db_size,
             "db_size_mb": round(db_size / 1024 / 1024, 2),
         }
@@ -309,8 +188,8 @@ class PersistenceManager:
         try:
             await conn.execute("VACUUM")
             logger.debug("数据库优化完成")
-        except (aiosqlite.Error, OSError):
-            logger.error("数据库优化失败")
+        except (aiosqlite.Error, OSError) as e:
+            logger.error(f"数据库优化失败: {e}")
         finally:
             await self._pool.return_connection(conn)
 

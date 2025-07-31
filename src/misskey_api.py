@@ -1,14 +1,12 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-import json
 import asyncio
+import json
 from typing import Any, Dict, List, Optional
 
 import aiohttp
 from loguru import logger
 
 from .exceptions import APIConnectionError, APIRateLimitError, AuthenticationError
+from .http_client import HTTPSession
 from .constants import (
     RETRYABLE_HTTP_CODES,
     HTTP_OK,
@@ -16,21 +14,19 @@ from .constants import (
     HTTP_FORBIDDEN,
     HTTP_TOO_MANY_REQUESTS,
     API_MAX_RETRIES,
-    API_TIMEOUT,
 )
 from .interfaces import IAPIClient
 from .utils import retry_async
+
+__all__ = ("MisskeyAPI",)
 
 
 class MisskeyAPI(IAPIClient):
     def __init__(self, instance_url: str, access_token: str):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token
-        self.headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "MisskeyBot/1.0",
-        }
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.http_client = HTTPSession
+        self.http_client.set_token(access_token)
 
     async def __aenter__(self):
         return self
@@ -40,21 +36,11 @@ class MisskeyAPI(IAPIClient):
         return False
 
     async def close(self) -> None:
-        if self.session and not self.session.closed:
-            connector = self.session.connector
-            await self.session.close()
-            if connector and not connector.closed:
-                await connector.close()
-            await asyncio.sleep(0.1)
-            self.session = None
         logger.debug("Misskey API 客户端连接已关闭")
 
-    async def _ensure_session(self) -> aiohttp.ClientSession:
-        if not self.session or self.session.closed:
-            self.session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT)
-            )
-        return self.session
+    @property
+    def session(self):
+        return self.http_client.session
 
     def _is_retryable_error(self, status_code: int) -> bool:
         return status_code in RETRYABLE_HTTP_CODES
@@ -77,7 +63,8 @@ class MisskeyAPI(IAPIClient):
                 result = await response.json()
                 logger.debug(f"Misskey API 请求成功: {endpoint}")
                 return result
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                logger.error(f"响应不是有效的 JSON 格式: {e}")
                 raise APIConnectionError()
 
         is_retryable = self._handle_response_status(response, endpoint)
@@ -88,34 +75,28 @@ class MisskeyAPI(IAPIClient):
 
     @retry_async(
         max_retries=API_MAX_RETRIES,
-        retryable_exceptions=(aiohttp.ClientError, APIConnectionError),
+        retryable_exceptions=(Exception, APIConnectionError),
     )
     async def _make_request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        if not endpoint or not endpoint.strip():
-            raise ValueError("API 端点不能为空")
-        if data is not None and not isinstance(data, dict):
-            raise ValueError("请求数据必须是字典格式")
-        session = await self._ensure_session()
         url = f"{self.instance_url}/api/{endpoint}"
-        request_data = {"i": self.access_token, **(data or {})}
+
+        payload = {"i": self.access_token}
+        if data:
+            payload.update(data)
+
         try:
-            async with session.post(
-                url, json=request_data, headers=self.headers
-            ) as response:
+            async with self.session.post(url, json=payload) as response:
                 return await self._process_response(response, endpoint)
-        except aiohttp.ClientError:
-            logger.warning("网络错误")
-            raise APIConnectionError()
-        except (AuthenticationError, ValueError):
-            raise
-        except (ConnectionError, OSError, TimeoutError, RuntimeError, MemoryError):
-            logger.error("网络连接错误")
-            raise APIConnectionError()
-        except (TypeError, KeyError):
-            logger.error("Misskey API 数据处理错误")
-            raise ValueError("API 响应数据格式错误")
+        except (
+            aiohttp.ClientError,
+            asyncio.TimeoutError,
+            OSError,
+            json.JSONDecodeError,
+        ) as e:
+            logger.error(f"HTTP 请求错误: {e}")
+            raise APIConnectionError() from e
 
     async def request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
@@ -149,8 +130,8 @@ class MisskeyAPI(IAPIClient):
             original_note = await self.get_note(reply_id)
             original_visibility = original_note.get("visibility", "public")
             return self._determine_reply_visibility(original_visibility, visibility)
-        except (APIConnectionError, APIRateLimitError, ValueError):
-            logger.warning("获取原笔记可见性失败，使用默认设置")
+        except (APIConnectionError, APIRateLimitError, ValueError) as e:
+            logger.warning(f"获取原笔记可见性失败，使用默认设置: {e}")
             return visibility if visibility is not None else "home"
 
     def _get_default_visibility(self) -> str:
@@ -223,6 +204,6 @@ class MisskeyAPI(IAPIClient):
             )
             logger.debug(f"通过 chat/history API 获取到 {len(chat_messages)} 条聊天")
             return chat_messages
-        except (APIConnectionError, APIRateLimitError, ValueError):
-            logger.debug("获取聊天失败")
+        except (APIConnectionError, APIRateLimitError, ValueError) as e:
+            logger.debug(f"获取聊天失败: {e}")
             return []

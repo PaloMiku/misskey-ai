@@ -1,8 +1,13 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Callable, Awaitable
+
+__all__ = (
+    "IConfigProvider",
+    "IAPIClient",
+    "IStreamingClient",
+    "ITextGenerator",
+    "IPlugin",
+)
 
 
 class IConfigProvider(ABC):

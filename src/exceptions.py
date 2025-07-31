@@ -1,26 +1,42 @@
+__all__ = (
+    "MisskeyBotError",
+    "ConfigurationError",
+    "AuthenticationError",
+    "APIConnectionError",
+    "APIRateLimitError",
+    "WebSocketConnectionError",
+    "WebSocketReconnectError",
+    "ClientConnectorError",
+)
+
+
 class MisskeyBotError(Exception):
-    pass
+    """Base exception for all Misskey bot errors"""
 
 
 class ConfigurationError(MisskeyBotError):
-    pass
+    """Configuration related errors"""
 
 
 class AuthenticationError(MisskeyBotError):
-    pass
+    """Authentication related errors"""
 
 
 class APIConnectionError(MisskeyBotError):
-    pass
-
-
-class WebSocketConnectionError(MisskeyBotError):
-    pass
-
-
-class WebSocketReconnectError(WebSocketConnectionError):
-    pass
+    """API connection related errors"""
 
 
 class APIRateLimitError(MisskeyBotError):
-    pass
+    """API rate limit errors"""
+
+
+class WebSocketConnectionError(MisskeyBotError):
+    """WebSocket connection errors"""
+
+
+class WebSocketReconnectError(WebSocketConnectionError):
+    """WebSocket reconnection errors"""
+
+
+class ClientConnectorError(MisskeyBotError):
+    """Client connector errors"""

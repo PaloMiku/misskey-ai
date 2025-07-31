@@ -13,6 +13,8 @@ from .exceptions import ConfigurationError
 from .interfaces import IConfigProvider
 from .constants import ConfigKeys
 
+__all__ = ("Config",)
+
 T = TypeVar("T")
 
 
@@ -31,12 +33,15 @@ class Config(IConfigProvider):
             logger.debug(f"已加载配置文件: {config_path}")
             self._override_from_env()
             self._validate_config()
-        except yaml.YAMLError:
-            raise ConfigurationError()
-        except (OSError, PermissionError):
-            raise ConfigurationError()
-        except (ValueError, TypeError, AttributeError):
-            raise ConfigurationError()
+        except yaml.YAMLError as e:
+            logger.error(f"YAML 配置文件解析错误: {e}")
+            raise ConfigurationError() from e
+        except (OSError, PermissionError) as e:
+            logger.error(f"配置文件读取错误: {e}")
+            raise ConfigurationError() from e
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.error(f"配置处理错误: {e}")
+            raise ConfigurationError() from e
 
     def _override_from_env(self) -> None:
         env_mappings = {
@@ -100,8 +105,8 @@ class Config(IConfigProvider):
                 content = f.read().strip()
                 logger.debug(f"从文件加载配置: {file_path}")
                 return content
-        except (OSError, UnicodeDecodeError):
-            logger.debug(f"无法从文件加载配置 {file_path}，使用原始值")
+        except (OSError, UnicodeDecodeError) as e:
+            logger.debug(f"无法从文件加载配置 {file_path}，使用原始值: {e}")
             return file_path
 
     def _looks_like_file_path(self, value: str) -> bool:
@@ -114,8 +119,15 @@ class Config(IConfigProvider):
     def get(self, key: str, default: Any = None) -> Any:
         try:
             return reduce(lambda d, k: d[k], key.split("."), self.config)
-        except (KeyError, TypeError):
-            return default if default is not None else self._get_builtin_default(key)
+        except (KeyError, TypeError) as e:
+            builtin_default = self._get_builtin_default(key)
+            if default is not None:
+                return default
+            elif builtin_default is not None:
+                return builtin_default
+            else:
+                logger.error(f"配置文件格式错误: {e}")
+                return None
 
     def _get_builtin_default(self, key: str) -> Any:
         builtin_defaults = {
@@ -169,8 +181,9 @@ class Config(IConfigProvider):
             if path:
                 try:
                     Path(path).parent.mkdir(parents=True, exist_ok=True)
-                except (OSError, PermissionError):
-                    raise ConfigurationError()
+                except (OSError, PermissionError) as e:
+                    logger.error(f"创建目录失败 {path}: {e}")
+                    raise ConfigurationError() from e
 
     def get_typed(
         self, key: str, default: T = None, expected_type: Optional[type] = None

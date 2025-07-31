@@ -9,6 +9,8 @@ from loguru import logger
 from .interfaces import IPlugin
 from .utils import extract_username, extract_user_id
 
+__all__ = ("PluginBase", "PluginContext")
+
 
 class PluginContext:
     def __init__(
@@ -127,6 +129,6 @@ class PluginBase(IPlugin):
                         await method()
                     else:
                         method()
-            except (AttributeError, TypeError, RuntimeError, OSError):
-                logger.error(f"插件 {self.name} 清理资源失败")
+            except (AttributeError, TypeError, OSError) as e:
+                logger.error(f"插件 {self.name} 清理资源失败: {e}")
         self._resources_to_cleanup.clear()

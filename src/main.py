@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 
 from .config import Config
 from .bot import MisskeyBot
-from .utils import log_system_info, monitor_memory_usage
 from .exceptions import ConfigurationError, APIConnectionError, AuthenticationError
 from .constants import ConfigKeys
 
@@ -30,7 +29,6 @@ async def main() -> None:
     log_path = Path(config.get(ConfigKeys.LOG_PATH))
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logger.add(log_path, level=config.get(ConfigKeys.LOG_LEVEL))
-    await log_system_info()
     logger.info("启动机器人...")
     try:
         bot = MisskeyBot(config)
@@ -45,8 +43,8 @@ async def main() -> None:
         AuthenticationError,
         OSError,
         ValueError,
-    ):
-        logger.error("启动过程中发生错误")
+    ) as e:
+        logger.error(f"启动过程中发生错误: {e}")
         raise
     finally:
         await shutdown()
@@ -55,7 +53,6 @@ async def main() -> None:
 
 async def _setup_monitoring_and_signals() -> None:
     global tasks
-    tasks.append(asyncio.create_task(monitor_memory_usage()))
     loop = asyncio.get_running_loop()
     signals = (
         (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
