@@ -32,6 +32,7 @@ class StreamingClient(IStreamingClient):
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.processed_events = LRUCache(maxsize=MAX_CACHE)
         self.running = False
+        self._first_connection = True
 
     async def __aenter__(self):
         return self
@@ -74,7 +75,9 @@ class StreamingClient(IStreamingClient):
                         await self.connect_channel(channel)
             else:
                 await self.connect_channel(ChannelType.MAIN)
-            logger.debug("Streaming 客户端已启动")
+            if self._first_connection:
+                logger.debug("Streaming 客户端已启动")
+                self._first_connection = False
         except (WebSocketConnectionError, WebSocketReconnectError):
             self.running = False
             raise
@@ -85,7 +88,6 @@ class StreamingClient(IStreamingClient):
         self.running = False
         await self._disconnect_all_channels()
         self.processed_events.clear()
-        logger.debug("Streaming 客户端已断开连接")
 
     @property
     def is_connected(self) -> bool:
@@ -126,7 +128,8 @@ class StreamingClient(IStreamingClient):
             raise WebSocketConnectionError()
         await self.ws_connection.send_json(message)
         self.channels[channel_id] = {"type": channel_type, "params": params or {}}
-        logger.debug(f"已连接频道: {channel_type.value} (ID: {channel_id})")
+        if self._first_connection:
+            logger.debug(f"已连接频道: {channel_type.value} (ID: {channel_id})")
         return channel_id
 
     async def disconnect_channel(self, channel_type: ChannelType) -> None:
@@ -148,15 +151,14 @@ class StreamingClient(IStreamingClient):
         )
         ws_url = f"{base_ws_url}/streaming?i={self.access_token}"
         safe_url = f"{base_ws_url}/streaming"
-        logger.debug(f"连接 WebSocket: {safe_url}")
         if self.session is None:
             timeout = aiohttp.ClientTimeout(total=WS_TIMEOUT)
             self.session = aiohttp.ClientSession(timeout=timeout)
         try:
             self.ws_connection = await self.session.ws_connect(ws_url)
-            logger.debug(f"WebSocket 连接成功: {safe_url}")
+            if self._first_connection:
+                logger.debug(f"WebSocket 连接成功: {safe_url}")
             self.message_task = asyncio.create_task(self._handle_messages())
-            logger.debug("WebSocket 消息处理任务已启动")
         except (aiohttp.ClientError, OSError, ValueError, TypeError):
             await self._cleanup_failed_connection()
             logger.error("WebSocket 连接失败")
@@ -188,7 +190,6 @@ class StreamingClient(IStreamingClient):
                 message = {"type": "disconnect", "body": {"id": channel_id}}
                 await self.ws_connection.send_json(message)
         self.channels.clear()
-        logger.debug("已断开所有频道连接")
 
     async def _handle_messages(self) -> None:
         while self.running and self._ws_available:

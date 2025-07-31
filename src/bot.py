@@ -3,7 +3,6 @@
 
 import asyncio
 import json
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 
@@ -58,7 +57,6 @@ class MisskeyBot:
                 config.get(ConfigKeys.DEEPSEEK_API_BASE),
             )
             self.scheduler = AsyncIOScheduler()
-            self._cleanup_needed = True
             logger.debug("API 客户端和调度器初始化完成")
         except (ValueError, TypeError, KeyError):
             logger.error("初始化失败")
@@ -70,12 +68,7 @@ class MisskeyBot:
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
         self.running = False
         self.tasks = []
-        self.error_counts = {
-            "api_errors": 0,
-            "rate_limit_errors": 0,
-            "auth_errors": 0,
-            "connection_errors": 0,
-        }
+        self.error_counts = {}
         logger.info("机器人初始化完成")
 
     async def __aenter__(self):
@@ -132,9 +125,9 @@ class MisskeyBot:
     async def _setup_streaming(self) -> None:
         self.streaming.on_mention(self._handle_mention)
         self.streaming.on_message(self._handle_message)
+        await self.streaming.connect()
         task = asyncio.create_task(self._maintain_websocket())
         self.tasks.append(task)
-        logger.info("WebSocket 维护任务已启动")
 
     async def stop(self) -> None:
         if not self.running:
@@ -159,7 +152,6 @@ class MisskeyBot:
         except (OSError, ValueError, TypeError):
             logger.error("停止机器人时出错")
         finally:
-            self._cleanup_needed = False
             logger.info("服务组件已停止")
 
     def _reset_daily_post_count(self) -> None:
@@ -169,8 +161,6 @@ class MisskeyBot:
     async def _maintain_websocket(self) -> None:
         while self.running:
             try:
-                await self.streaming.connect()
-                logger.info("WebSocket 连接成功")
                 while self.running and self.streaming.is_connected:
                     await asyncio.sleep(1)
                     if hasattr(self.streaming, "message_task"):
@@ -179,37 +169,41 @@ class MisskeyBot:
                             try:
                                 await task
                             except WebSocketReconnectError:
-                                logger.info("检测到重连信号，准备重连")
                                 break
                             except (ValueError, TypeError, AttributeError, OSError):
                                 logger.error("消息处理任务异常")
                                 break
             except asyncio.CancelledError:
-                logger.debug("WebSocket 维护任务被取消")
                 break
-            except WebSocketReconnectError:
-                logger.info("WebSocket 需要重连")
+            except (
+                WebSocketReconnectError,
+                WebSocketConnectionError,
+                APIConnectionError,
+                OSError,
+            ):
+                logger.error("WebSocket 连接失败，尝试重连")
                 await self._cleanup_websocket_resources()
                 await asyncio.sleep(3)
-                continue
-            except (WebSocketConnectionError, APIConnectionError, OSError):
-                logger.error("WebSocket 连接失败")
-                await self._cleanup_websocket_resources()
-                await asyncio.sleep(3)
+                try:
+                    await self.streaming.connect()
+                except (WebSocketConnectionError, APIConnectionError, OSError):
+                    pass
                 continue
 
             if not self.running:
                 break
 
             await self._cleanup_websocket_resources()
-            logger.info("准备重新连接 WebSocket...")
             await asyncio.sleep(3)
+            try:
+                await self.streaming.connect()
+            except (WebSocketConnectionError, APIConnectionError, OSError):
+                logger.error("重连失败")
 
     async def _cleanup_websocket_resources(self) -> None:
         try:
             await self.streaming.disconnect()
             self.streaming.processed_events.clear()
-            logger.debug("WebSocket 资源清理完成")
         except (OSError, ValueError):
             logger.error("清理 WebSocket 资源时出错")
 
@@ -228,7 +222,7 @@ class MisskeyBot:
             AuthenticationError,
             OSError,
         ):
-            await self._handle_mention_error(None, mention_data)
+            await self._handle_mention_error(mention_data)
 
     def _parse_mention_data(self, note: Dict[str, Any]) -> Dict[str, Any]:
         is_reply_event = note.get("type") == "reply" and "note" in note
@@ -305,9 +299,7 @@ class MisskeyBot:
                 "抱歉，回复发送失败，请稍后再试。",
             )
 
-    async def _handle_mention_error(
-        self, e: Exception, mention_data: Dict[str, Any]
-    ) -> None:
+    async def _handle_mention_error(self, mention_data: Dict[str, Any]) -> None:
         logger.error("处理提及时出错")
         try:
             if mention_data["username"] and mention_data["reply_target_id"]:
@@ -406,20 +398,15 @@ class MisskeyBot:
         self, user_id: str, limit: int = None
     ) -> List[Dict[str, str]]:
         try:
-            if limit is None:
-                limit = self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
+            limit = limit or self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
             messages = await self.misskey.get_messages(user_id, limit=limit)
-            chat_history = []
-            for msg in reversed(messages):
-                if msg.get("userId") == user_id:
-                    chat_history.append(
-                        {"role": "user", "content": msg.get("text", "")}
-                    )
-                else:
-                    chat_history.append(
-                        {"role": "assistant", "content": msg.get("text", "")}
-                    )
-            return chat_history
+            return [
+                {
+                    "role": "user" if msg.get("userId") == user_id else "assistant",
+                    "content": msg.get("text", ""),
+                }
+                for msg in reversed(messages)
+            ]
         except (APIConnectionError, APIRateLimitError, ValueError, OSError):
             logger.error("获取聊天历史时出错")
             return []
@@ -517,10 +504,8 @@ class MisskeyBot:
     ) -> str:
         if not prompt:
             raise ValueError("缺少提示词")
-        timestamp_min = (
-            timestamp_override
-            if timestamp_override is not None
-            else int(time.time() // 60)
+        timestamp_min = timestamp_override or int(
+            datetime.now(timezone.utc).timestamp() // 60
         )
         full_prompt = f"[{timestamp_min}] {plugin_prompt}{prompt}"
         return await self.deepseek.generate_text(

@@ -101,7 +101,6 @@ class MisskeyAPI(IAPIClient):
         url = f"{self.instance_url}/api/{endpoint}"
         request_data = {"i": self.access_token, **(data or {})}
         try:
-            logger.debug(f"请求 Misskey API: {endpoint}")
             async with session.post(
                 url, json=request_data, headers=self.headers
             ) as response:
