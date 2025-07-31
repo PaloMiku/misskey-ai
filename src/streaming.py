@@ -8,10 +8,11 @@ from enum import Enum
 from typing import Any, Dict, Optional, Callable, List, Awaitable
 
 import aiohttp
+import aiohttp.http
 from cachetools import LRUCache
 from loguru import logger
 
-from .exceptions import WebSocketConnectionError
+from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .interfaces import IStreamingClient
 from .constants import WS_TIMEOUT, MAX_CACHE
 
@@ -59,20 +60,24 @@ class StreamingClient(IStreamingClient):
             logger.warning("Streaming 客户端已在运行")
             return
         self.running = True
-        await self._connect_websocket()
-        if channels:
-            for channel in channels:
-                if isinstance(channel, str):
-                    try:
-                        channel_type = ChannelType(channel)
-                        await self.connect_channel(channel_type)
-                    except ValueError:
-                        logger.warning(f"未知的频道类型: {channel}")
-                elif isinstance(channel, ChannelType):
-                    await self.connect_channel(channel)
-        else:
-            await self.connect_channel(ChannelType.MAIN)
-        logger.debug("Streaming 客户端已启动")
+        try:
+            await self._connect_websocket()
+            if channels:
+                for channel in channels:
+                    if isinstance(channel, str):
+                        try:
+                            channel_type = ChannelType(channel)
+                            await self.connect_channel(channel_type)
+                        except ValueError:
+                            logger.warning(f"未知的频道类型: {channel}")
+                    elif isinstance(channel, ChannelType):
+                        await self.connect_channel(channel)
+            else:
+                await self.connect_channel(ChannelType.MAIN)
+            logger.debug("Streaming 客户端已启动")
+        except (WebSocketConnectionError, WebSocketReconnectError):
+            self.running = False
+            raise
 
     async def disconnect(self) -> None:
         if not self.running:
@@ -118,7 +123,7 @@ class StreamingClient(IStreamingClient):
         }
         if not self._ws_available:
             logger.error(f"WebSocket 连接不可用，无法连接频道: {channel_type.value}")
-            raise WebSocketConnectionError("WebSocket 连接不可用")
+            raise WebSocketConnectionError()
         await self.ws_connection.send_json(message)
         self.channels[channel_id] = {"type": channel_type, "params": params or {}}
         logger.debug(f"已连接频道: {channel_type.value} (ID: {channel_id})")
@@ -152,11 +157,11 @@ class StreamingClient(IStreamingClient):
             logger.debug(f"WebSocket 连接成功: {safe_url}")
             self.message_task = asyncio.create_task(self._handle_messages())
             logger.debug("WebSocket 消息处理任务已启动")
-        except (aiohttp.ClientError, OSError, ValueError, TypeError) as e:
+        except (aiohttp.ClientError, OSError, ValueError, TypeError):
             await self._cleanup_failed_connection()
-            logger.error(f"WebSocket 连接失败: {e}")
-            logger.debug(f"WebSocket 连接错误详情: {e}", exc_info=True)
-            raise WebSocketConnectionError(f"WebSocket 连接失败: {e}")
+            logger.error("WebSocket 连接失败")
+            logger.debug("WebSocket 连接错误详情", exc_info=True)
+            raise WebSocketConnectionError()
 
     async def _close_websocket(self) -> None:
         if self.message_task:
@@ -174,8 +179,8 @@ class StreamingClient(IStreamingClient):
     async def _cleanup_failed_connection(self) -> None:
         try:
             await self._close_websocket()
-        except (OSError, ValueError) as e:
-            logger.debug(f"清理失败连接时出错: {e}")
+        except (OSError, ValueError):
+            logger.debug("清理失败连接时出错")
 
     async def _disconnect_all_channels(self) -> None:
         for channel_id in list(self.channels.keys()):
@@ -188,30 +193,26 @@ class StreamingClient(IStreamingClient):
     async def _handle_messages(self) -> None:
         while self.running and self._ws_available:
             try:
-                msg = await self.ws_connection.receive()
-                if msg is None:
-                    logger.debug("收到空消息，跳过处理")
-                    continue
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    try:
-                        data = json.loads(msg.data)
-                        await self._process_message(data)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"解码 WebSocket 消息失败: {e}")
+                msg = await self.ws_connection.receive(timeout=WS_TIMEOUT)
+                if msg is aiohttp.http.WS_CLOSED_MESSAGE:
+                    raise WebSocketReconnectError()
+                elif msg is aiohttp.http.WS_CLOSING_MESSAGE:
+                    raise WebSocketReconnectError()
+                elif msg.type == aiohttp.WSMsgType.TEXT:
+                    data = json.loads(msg.data)
+                    await self._process_message(data)
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    logger.error(f"WebSocket 错误: {self.ws_connection.exception()}")
-                    self.running = False
-                    break
-                elif msg.type == aiohttp.WSMsgType.CLOSE:
-                    logger.info("WebSocket 连接已关闭")
-                    self.running = False
-                    break
-            except (aiohttp.ClientError, OSError, ValueError, TypeError) as e:
-                logger.error(f"处理 WebSocket 消息时出错: {e}")
-                self.running = False
-                if self._ws_available:
-                    await self.ws_connection.close()
-                break
+                    raise WebSocketReconnectError()
+            except (
+                asyncio.TimeoutError,
+                aiohttp.ClientError,
+                OSError,
+                json.JSONDecodeError,
+            ):
+                raise WebSocketReconnectError()
+            except (ValueError, TypeError, AttributeError, KeyError):
+                logger.error("处理消息时出错")
+                continue
 
     async def _process_message(self, data: Dict[str, Any]) -> None:
         message_type = data.get("type")
@@ -301,9 +302,9 @@ class StreamingClient(IStreamingClient):
                     await handler(data)
                 else:
                     handler(data)
-            except (ValueError, TypeError, AttributeError, OSError) as e:
-                logger.error(f"事件处理器执行失败 ({event_type}): {e}")
-                logger.debug(f"{event_type} 处理器错误详情: {e}", exc_info=True)
+            except (ValueError, TypeError, AttributeError, OSError):
+                logger.error(f"事件处理器执行失败 ({event_type})")
+                logger.debug(f"{event_type} 处理器错误详情", exc_info=True)
 
     def _is_duplicate_event(
         self, event_id: Optional[str], event_type: Optional[str]

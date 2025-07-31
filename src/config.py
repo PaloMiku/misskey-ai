@@ -24,19 +24,19 @@ class Config(IConfigProvider):
     async def load(self) -> None:
         config_path = Path(self.config_path)
         if not config_path.exists():
-            raise ConfigurationError(f"配置文件不存在: {config_path}")
+            raise ConfigurationError()
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 self.config = yaml.safe_load(f)
             logger.debug(f"已加载配置文件: {config_path}")
             self._override_from_env()
             self._validate_config()
-        except yaml.YAMLError as e:
-            raise ConfigurationError(f"配置文件格式错误: {e}")
-        except (OSError, PermissionError) as e:
-            raise ConfigurationError(f"配置文件读取错误: {e}")
-        except (ValueError, TypeError, AttributeError) as e:
-            raise ConfigurationError(f"加载配置文件未知错误: {e}")
+        except yaml.YAMLError:
+            raise ConfigurationError()
+        except (OSError, PermissionError):
+            raise ConfigurationError()
+        except (ValueError, TypeError, AttributeError):
+            raise ConfigurationError()
 
     def _override_from_env(self) -> None:
         env_mappings = {
@@ -59,10 +59,6 @@ class Config(IConfigProvider):
             ),
             "BOT_RESPONSE_CHAT_ENABLED": (ConfigKeys.BOT_RESPONSE_CHAT_ENABLED, bool),
             "BOT_RESPONSE_CHAT_MEMORY": (ConfigKeys.BOT_RESPONSE_CHAT_MEMORY, int),
-            "BOT_RESPONSE_POLLING_INTERVAL": (
-                ConfigKeys.BOT_RESPONSE_POLLING_INTERVAL,
-                int,
-            ),
             "DB_PATH": (ConfigKeys.DB_PATH, str),
             "DB_CLEANUP_DAYS": (ConfigKeys.DB_CLEANUP_DAYS, int),
             "LOG_PATH": (ConfigKeys.LOG_PATH, str),
@@ -104,8 +100,8 @@ class Config(IConfigProvider):
                 content = f.read().strip()
                 logger.debug(f"从文件加载配置: {file_path}")
                 return content
-        except (OSError, UnicodeDecodeError) as e:
-            logger.debug(f"无法从文件加载配置 {file_path}: {e}，使用原始值")
+        except (OSError, UnicodeDecodeError):
+            logger.debug(f"无法从文件加载配置 {file_path}，使用原始值")
             return file_path
 
     def _looks_like_file_path(self, value: str) -> bool:
@@ -139,7 +135,6 @@ class Config(IConfigProvider):
             ConfigKeys.BOT_RESPONSE_MENTION_ENABLED: True,
             ConfigKeys.BOT_RESPONSE_CHAT_ENABLED: True,
             ConfigKeys.BOT_RESPONSE_CHAT_MEMORY: 10,
-            ConfigKeys.BOT_RESPONSE_POLLING_INTERVAL: 60,
             ConfigKeys.DB_PATH: "data/misskey_ai.db",
             ConfigKeys.DB_CLEANUP_DAYS: 30,
             ConfigKeys.LOG_PATH: "logs/misskey_ai.log",
@@ -163,9 +158,7 @@ class Config(IConfigProvider):
         for config_key, display_name in required_configs:
             value = self.get(config_key)
             if not value or (isinstance(value, str) and not value.strip()):
-                raise ConfigurationError(
-                    f"缺少必需配置项: {display_name} ({config_key})"
-                )
+                raise ConfigurationError()
 
     def _validate_file_paths(self) -> None:
         paths = [
@@ -176,8 +169,8 @@ class Config(IConfigProvider):
             if path:
                 try:
                     Path(path).parent.mkdir(parents=True, exist_ok=True)
-                except (OSError, PermissionError) as e:
-                    raise ConfigurationError(f"无法创建{desc} {Path(path).parent}: {e}")
+                except (OSError, PermissionError):
+                    raise ConfigurationError()
 
     def get_typed(
         self, key: str, default: T = None, expected_type: Optional[type] = None

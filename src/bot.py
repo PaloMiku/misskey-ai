@@ -16,7 +16,6 @@ from .misskey_api import MisskeyAPI
 from .streaming import StreamingClient
 from .persistence import PersistenceManager
 from .plugin_manager import PluginManager
-from .polling import PollingManager
 from .interfaces import ITextGenerator, IAPIClient, IStreamingClient
 from .exceptions import (
     ConfigurationError,
@@ -24,14 +23,14 @@ from .exceptions import (
     APIRateLimitError,
     AuthenticationError,
     WebSocketConnectionError,
+    WebSocketReconnectError,
 )
 from .constants import (
-    WS_MAX_RETRIES,
     ERROR_MESSAGES,
     DEFAULT_ERROR_MESSAGE,
     ConfigKeys,
 )
-from .utils import retry_async, extract_user_id, extract_username, get_memory_usage
+from .utils import extract_user_id, extract_username, get_memory_usage
 
 
 class MisskeyBot:
@@ -61,14 +60,11 @@ class MisskeyBot:
             self.scheduler = AsyncIOScheduler()
             self._cleanup_needed = True
             logger.debug("API 客户端和调度器初始化完成")
-        except (ValueError, TypeError, KeyError) as e:
-            logger.error(f"初始化失败: {e}")
-            raise ConfigurationError(f"初始化失败: {e}")
+        except (ValueError, TypeError, KeyError):
+            logger.error("初始化失败")
+            raise ConfigurationError()
         self.persistence = PersistenceManager(config.get(ConfigKeys.DB_PATH))
         self.plugin_manager = PluginManager(config, persistence=self.persistence)
-        self.polling_manager = PollingManager(
-            config, self.misskey, self.persistence, self.startup_time
-        )
         self.last_auto_post_time = self.startup_time - timedelta(hours=24)
         self.posts_today = 0
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
@@ -109,18 +105,15 @@ class MisskeyBot:
             current_user = await self.misskey.get_current_user()
             self.bot_user_id = current_user.get("id")
             logger.info(f"已连接 Misskey 实例，用户 ID: {self.bot_user_id}")
-        except (APIConnectionError, AuthenticationError, ValueError) as e:
-            logger.error(f"连接 Misskey 实例失败: {e}")
+        except (APIConnectionError, AuthenticationError, ValueError):
+            logger.error("连接 Misskey 实例失败")
             self.bot_user_id = None
-        await self.polling_manager.load_recent_processed_items()
-        self.polling_manager.set_handlers(self._handle_mention, self._handle_message)
         await self.plugin_manager.load_plugins()
         await self.plugin_manager.on_startup()
 
     async def _setup_scheduler(self) -> None:
         cron_jobs = [
             (self._reset_daily_post_count, 0),
-            (self.polling_manager.cleanup_old_processed_items, 1),
             (self.persistence.vacuum, 2),
         ]
         for func, hour in cron_jobs:
@@ -139,19 +132,9 @@ class MisskeyBot:
     async def _setup_streaming(self) -> None:
         self.streaming.on_mention(self._handle_mention)
         self.streaming.on_message(self._handle_message)
-        try:
-            await self._start_websocket()
-            if self.streaming.is_connected:
-                logger.info("WebSocket 连接成功，使用实时模式")
-                task = asyncio.create_task(self._maintain_websocket())
-            else:
-                logger.warning("WebSocket 重试失败，启用轮询模式")
-                task = asyncio.create_task(self.polling_manager.start_polling())
-            self.tasks.append(task)
-        except (WebSocketConnectionError, APIConnectionError, OSError) as e:
-            logger.error(f"WebSocket 启动失败: {e}，启用轮询模式")
-            task = asyncio.create_task(self.polling_manager.start_polling())
-            self.tasks.append(task)
+        task = asyncio.create_task(self._maintain_websocket())
+        self.tasks.append(task)
+        logger.info("WebSocket 维护任务已启动")
 
     async def stop(self) -> None:
         if not self.running:
@@ -173,11 +156,8 @@ class MisskeyBot:
             await self.misskey.close()
             await self.deepseek.close()
             await self.persistence.close()
-            if self.polling_manager.running:
-                self.polling_manager.stop_polling()
-            self.polling_manager.clear_caches()
-        except (OSError, ValueError, TypeError) as e:
-            logger.error(f"停止机器人时出错: {e}")
+        except (OSError, ValueError, TypeError):
+            logger.error("停止机器人时出错")
         finally:
             self._cleanup_needed = False
             logger.info("服务组件已停止")
@@ -186,60 +166,52 @@ class MisskeyBot:
         self.posts_today = 0
         logger.debug("已重置每日发帖计数")
 
-    async def _start_websocket(self) -> None:
-        @retry_async(
-            max_retries=WS_MAX_RETRIES,
-        )
-        async def websocket_connect():
-            await self.streaming.connect()
-
-        await websocket_connect()
-
     async def _maintain_websocket(self) -> None:
-        try:
-            while self.running and self.streaming.is_connected:
-                tasks_to_check = [
-                    ("message_task", "消息处理任务"),
-                ]
-                for task_attr, task_name in tasks_to_check:
-                    if hasattr(self.streaming, task_attr):
-                        task = getattr(self.streaming, task_attr)
+        while self.running:
+            try:
+                await self.streaming.connect()
+                logger.info("WebSocket 连接成功")
+                while self.running and self.streaming.is_connected:
+                    await asyncio.sleep(1)
+                    if hasattr(self.streaming, "message_task"):
+                        task = getattr(self.streaming, "message_task")
                         if task and task.done():
-                            logger.warning(f"{task_name}异常结束，重试中...")
-                            raise WebSocketConnectionError(f"{task_name}异常结束")
-                await asyncio.sleep(1)
-        except asyncio.CancelledError:
-            logger.debug("WebSocket 维护任务被取消")
-        except (WebSocketConnectionError, APIConnectionError, OSError) as e:
-            logger.error(f"WebSocket 维护任务出错: {e}")
-            if self.running:
+                            try:
+                                await task
+                            except WebSocketReconnectError:
+                                logger.info("检测到重连信号，准备重连")
+                                break
+                            except (ValueError, TypeError, AttributeError, OSError):
+                                logger.error("消息处理任务异常")
+                                break
+            except asyncio.CancelledError:
+                logger.debug("WebSocket 维护任务被取消")
+                break
+            except WebSocketReconnectError:
+                logger.info("WebSocket 需要重连")
                 await self._cleanup_websocket_resources()
-                try:
-                    await self._start_websocket()
-                    if self.streaming.is_connected:
-                        logger.info("WebSocket 重新连接成功")
-                        await self._maintain_websocket()
-                    else:
-                        self._switch_to_polling("WebSocket 重试失败")
-                except (
-                    WebSocketConnectionError,
-                    APIConnectionError,
-                    OSError,
-                ) as reconnect_error:
-                    self._switch_to_polling(f"WebSocket 重试失败: {reconnect_error}")
+                await asyncio.sleep(3)
+                continue
+            except (WebSocketConnectionError, APIConnectionError, OSError):
+                logger.error("WebSocket 连接失败")
+                await self._cleanup_websocket_resources()
+                await asyncio.sleep(3)
+                continue
 
-    def _switch_to_polling(self, reason: str) -> None:
-        logger.warning(f"{reason}，切换到轮询模式")
-        task = asyncio.create_task(self.polling_manager.start_polling())
-        self.tasks.append(task)
+            if not self.running:
+                break
+
+            await self._cleanup_websocket_resources()
+            logger.info("准备重新连接 WebSocket...")
+            await asyncio.sleep(3)
 
     async def _cleanup_websocket_resources(self) -> None:
         try:
             await self.streaming.disconnect()
             self.streaming.processed_events.clear()
             logger.debug("WebSocket 资源清理完成")
-        except (OSError, ValueError) as e:
-            logger.error(f"清理 WebSocket 资源时出错: {e}")
+        except (OSError, ValueError):
+            logger.error("清理 WebSocket 资源时出错")
 
     async def _handle_mention(self, note: Dict[str, Any]) -> None:
         if not self.config.get(ConfigKeys.BOT_RESPONSE_MENTION_ENABLED):
@@ -255,8 +227,8 @@ class MisskeyBot:
             APIRateLimitError,
             AuthenticationError,
             OSError,
-        ) as e:
-            await self._handle_mention_error(e, mention_data)
+        ):
+            await self._handle_mention_error(None, mention_data)
 
     def _parse_mention_data(self, note: Dict[str, Any]) -> Dict[str, Any]:
         is_reply_event = note.get("type") == "reply" and "note" in note
@@ -286,12 +258,6 @@ class MisskeyBot:
     async def _process_mention(
         self, mention_data: Dict[str, Any], note: Dict[str, Any]
     ) -> None:
-        await self.polling_manager.mark_processed(
-            mention_data["mention_id"],
-            mention_data["user_id"],
-            mention_data["username"],
-            "mention",
-        )
         logger.info(
             f"收到 @{mention_data['username']} 的提及: {self._format_log_text(mention_data['text'])}"
         )
@@ -331,24 +297,18 @@ class MisskeyBot:
             logger.info(
                 f"已回复 @{mention_data['username']}: {self._format_log_text(formatted_reply)}"
             )
-        except (APIRateLimitError, APIConnectionError, AuthenticationError) as e:
-            error_message = self._handle_error(e, "生成或发送回复时")
+        except (APIRateLimitError, APIConnectionError, AuthenticationError):
+            logger.error("生成或发送回复时出错")
             await self._send_error_reply(
                 mention_data["username"],
                 mention_data["reply_target_id"],
-                error_message
-                if "生成" in str(e)
-                else "抱歉，回复发送失败，请稍后再试。",
+                "抱歉，回复发送失败，请稍后再试。",
             )
 
     async def _handle_mention_error(
         self, e: Exception, mention_data: Dict[str, Any]
     ) -> None:
-        if isinstance(e, ValueError):
-            logger.error(f"输入验证错误: {e}")
-        else:
-            logger.error(f"处理提及时出错: {e}")
-        self._handle_error(e, "处理提及时")
+        logger.error("处理提及时出错")
         try:
             if mention_data["username"] and mention_data["reply_target_id"]:
                 await self._send_error_reply(
@@ -356,8 +316,8 @@ class MisskeyBot:
                     mention_data["reply_target_id"],
                     "抱歉，处理您的提及时出现了错误。",
                 )
-        except (APIConnectionError, APIRateLimitError, OSError) as reply_error:
-            logger.error(f"发送错误回复失败: {reply_error}")
+        except (APIConnectionError, APIRateLimitError, OSError):
+            logger.error("发送错误回复失败")
 
     async def _handle_message(self, message: Dict[str, Any]) -> None:
         if not self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_ENABLED):
@@ -367,9 +327,7 @@ class MisskeyBot:
             logger.debug("缺少 ID，跳过处理")
             return
         logger.debug(f"聊天数据: {json.dumps(message, ensure_ascii=False, indent=2)}")
-        if self.polling_manager.is_message_processed(
-            message_id
-        ) or await self.persistence.is_message_processed(message_id):
+        if await self.persistence.is_message_processed(message_id):
             logger.debug(f"已处理: {message_id}")
             return
         try:
@@ -380,9 +338,8 @@ class MisskeyBot:
             AuthenticationError,
             ValueError,
             OSError,
-        ) as e:
-            logger.error(f"处理聊天时出错: {e}")
-            logger.debug(f"处理聊天详细错误: {e}", exc_info=True)
+        ):
+            logger.error("处理聊天时出错")
 
     async def _process_chat_message(
         self, message: Dict[str, Any], message_id: str
@@ -395,13 +352,7 @@ class MisskeyBot:
         )
         if self.bot_user_id and user_id == self.bot_user_id:
             logger.debug(f"跳过自己发送的聊天: {message_id}")
-            await self.polling_manager.mark_processed(
-                message_id, user_id, username, "message"
-            )
             return
-        await self.polling_manager.mark_processed(
-            message_id, user_id, username, "message"
-        )
         if not (user_id and text):
             logger.debug(f"聊天缺少必要信息 - 用户 ID: {user_id}, 文本: {bool(text)}")
             return
@@ -448,8 +399,8 @@ class MisskeyBot:
             await self.misskey.create_note(
                 text=f"@{username}\n{message}", reply_id=note_id
             )
-        except (APIConnectionError, APIRateLimitError, OSError) as e:
-            logger.error(f"发送错误回复失败: {e}")
+        except (APIConnectionError, APIRateLimitError, OSError):
+            logger.error("发送错误回复失败")
 
     async def _get_chat_history(
         self, user_id: str, limit: int = None
@@ -469,8 +420,8 @@ class MisskeyBot:
                         {"role": "assistant", "content": msg.get("text", "")}
                     )
             return chat_history
-        except (APIConnectionError, APIRateLimitError, ValueError, OSError) as e:
-            logger.error(f"获取聊天历史时出错: {e}")
+        except (APIConnectionError, APIRateLimitError, ValueError, OSError):
+            logger.error("获取聊天历史时出错")
             return []
 
     async def _auto_post(self) -> None:
@@ -496,8 +447,8 @@ class MisskeyBot:
             AuthenticationError,
             ValueError,
             OSError,
-        ) as e:
-            logger.error(f"自动发帖时出错: {e}")
+        ):
+            logger.error("自动发帖时出错")
 
     def _check_auto_post_limits(self) -> bool:
         max_posts = self.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
@@ -547,8 +498,8 @@ class MisskeyBot:
                 timestamp_override,
                 **self._ai_config,
             )
-        except ValueError as e:
-            logger.warning(f"自动发帖失败: {e}，跳过本次发帖")
+        except ValueError:
+            logger.warning("自动发帖失败，跳过本次发帖")
             return
         visibility = self.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
         await self.misskey.create_note(post_content, visibility=visibility)

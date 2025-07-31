@@ -5,7 +5,6 @@ from .config import Config
 from .deepseek_api import DeepSeekAPI
 from .misskey_api import MisskeyAPI
 from .streaming import StreamingClient
-from .polling import PollingManager
 from .persistence import PersistenceManager
 
 __all__ = [
@@ -16,6 +15,5 @@ __all__ = [
     "DeepSeekAPI",
     "MisskeyAPI",
     "StreamingClient",
-    "PollingManager",
     "PersistenceManager",
 ]

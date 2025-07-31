@@ -64,7 +64,6 @@ bot:
     mention_enabled: true                           # 是否响应提及（@）
     chat_enabled: true                              # 是否响应聊天
     chat_memory: 10                                 # 聊天上下文记忆长度（条）
-    polling_interval: 60                            # 轮询模式间隔（秒）
 
 db:
   cleanup_days: 30                                  # SQLite 旧消息 ID 保留天数
@@ -134,7 +133,6 @@ BOT_AUTO_POST_PROMPT=生成一篇有趣、有见解的社交媒体帖子。     
 BOT_RESPONSE_MENTION_ENABLED=true                          # 是否响应提及（@）
 BOT_RESPONSE_CHAT_ENABLED=true                             # 是否响应聊天
 BOT_RESPONSE_CHAT_MEMORY=10                                # 聊天上下文记忆长度（条）
-BOT_RESPONSE_POLLING_INTERVAL=60                           # 轮询模式间隔（秒）
 DB_CLEANUP_DAYS=30                                         # SQLite 旧消息 ID 保留天数
 LOG_LEVEL=INFO                                             # 日志级别 (DEBUG/INFO/WARNING/ERROR)
 ```

@@ -29,7 +29,6 @@ bot:
     mention_enabled: true                           # 是否响应提及（@）
     chat_enabled: true                              # 是否响应聊天
     chat_memory: 10                                 # 聊天上下文记忆长度（条）
-    polling_interval: 60                            # 轮询模式间隔（秒）
 
 db:
   cleanup_days: 30                                  # SQLite 旧消息 ID 保留天数
