@@ -1,0 +1,4 @@
+nao:
+  enabled: true
+  priority: 50
+  api_key: "${SAUCENAO_API_KEY}"  # SauceNAO API 密钥，可选，不设置将使用免费额度
