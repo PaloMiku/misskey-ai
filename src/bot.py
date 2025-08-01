@@ -91,13 +91,9 @@ class MisskeyBot:
     async def _initialize_services(self) -> None:
         await self.persistence.initialize()
         await self.deepseek.initialize()
-        try:
-            current_user = await self.misskey.get_current_user()
-            self.bot_user_id = current_user.get("id")
-            logger.info(f"已连接 Misskey 实例，机器人 ID: {self.bot_user_id}")
-        except (APIConnectionError, AuthenticationError, ValueError) as e:
-            logger.error(f"连接 Misskey 实例失败: {e}")
-            self.bot_user_id = None
+        current_user = await self.misskey.get_current_user()
+        self.bot_user_id = current_user.get("id")
+        logger.info(f"已连接 Misskey 实例，机器人 ID: {self.bot_user_id}")
         await self.plugin_manager.load_plugins()
         await self.plugin_manager.on_startup()
 
@@ -141,7 +137,11 @@ class MisskeyBot:
         try:
             await self.plugin_manager.on_shutdown()
             await self.plugin_manager.cleanup_plugins()
-            self.scheduler.shutdown(wait=False)
+            if (
+                hasattr(self.scheduler, "_eventloop")
+                and self.scheduler._eventloop is not None
+            ):
+                self.scheduler.shutdown(wait=False)
             await self.state.cleanup_tasks()
             await self.streaming.close()
             await self.misskey.close()
