@@ -9,7 +9,7 @@ from loguru import logger
 
 from .interfaces import ITextGenerator
 from .utils import retry_async
-from .constants import API_MAX_RETRIES, API_TIMEOUT
+from .constants import API_MAX_RETRIES, API_TIMEOUT, REQUEST_TIMEOUT
 
 from openai import (
     RateLimitError,
@@ -90,7 +90,7 @@ class DeepSeekAPI(ITextGenerator):
                 max_tokens=max_tokens,
                 temperature=temperature,
             ),
-            timeout=API_TIMEOUT,
+            timeout=REQUEST_TIMEOUT,
         )
 
     def _process_api_response(self, response, call_type: str) -> str:

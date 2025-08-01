@@ -40,6 +40,8 @@ RETRYABLE_HTTP_CODES = {
 
 API_TIMEOUT = 60
 API_MAX_RETRIES = 3
+REQUEST_TIMEOUT = 120
+WS_TIMEOUT = 30
 
 MAX_CACHE = 500
 
@@ -48,7 +50,6 @@ ERROR_MESSAGES = {
     "APIRateLimitError": "抱歉，请求过于频繁，请稍后再试。",
     "AuthenticationError": "抱歉，服务配置有误，请联系管理员。",
     "APIConnectionError": "抱歉，AI 服务暂不可用，请稍后再试。",
-    "WebSocketConnectionError": "抱歉，WebSocket 连接失败，请稍后重试。",
     "ValueError": "抱歉，请求参数无效，请检查输入。",
     "RuntimeError": "抱歉，系统资源不足，请稍后再试。",
 }

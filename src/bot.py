@@ -249,10 +249,11 @@ class MisskeyBot:
             )
         except (APIRateLimitError, APIConnectionError, AuthenticationError) as e:
             logger.error(f"生成或发送回复时出错: {e}")
+            error_message = self._handle_error(e, "生成提及回复")
             await self._send_error_reply(
                 mention_data["username"],
                 mention_data["reply_target_id"],
-                "抱歉，回复发送失败，请稍后再试。",
+                error_message,
             )
 
     async def _handle_mention_error(self, mention_data: Dict[str, Any]) -> None:
@@ -262,7 +263,7 @@ class MisskeyBot:
                 await self._send_error_reply(
                     mention_data["username"],
                     mention_data["reply_target_id"],
-                    "抱歉，处理您的提及时出现了错误。",
+                    DEFAULT_ERROR_MESSAGE,
                 )
         except (APIConnectionError, APIRateLimitError, OSError) as e:
             logger.error(f"发送错误回复失败: {e}")
@@ -295,9 +296,6 @@ class MisskeyBot:
         logger.debug(
             f"解析聊天 - ID: {message_id}, 用户 ID: {user_id}, 文本: {self._format_log_text(text)}..."
         )
-        if self.bot_user_id and user_id == self.bot_user_id:
-            logger.debug(f"跳过自己发送的聊天: {message_id}")
-            return
         if not (user_id and text):
             logger.debug(f"聊天缺少必要信息 - 用户 ID: {user_id}, 文本: {bool(text)}")
             return

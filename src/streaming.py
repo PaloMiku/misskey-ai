@@ -11,7 +11,7 @@ from loguru import logger
 
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .interfaces import IStreamingClient
-from .constants import MAX_CACHE
+from .constants import MAX_CACHE, REQUEST_TIMEOUT
 from .http_client import HTTPSession
 
 __all__ = ("ChannelType", "StreamingClient")
@@ -67,6 +67,7 @@ class StreamingClient(IStreamingClient):
             except WebSocketReconnectError:
                 if not self.should_reconnect:
                     break
+                logger.debug("空闲连接被关闭，重新连接...")
                 await asyncio.sleep(3)
             except WebSocketConnectionError:
                 if not self.should_reconnect:
@@ -184,7 +185,7 @@ class StreamingClient(IStreamingClient):
     async def _listen_messages(self) -> None:
         while self.running and self._ws_available:
             try:
-                msg = await self.ws_connection.receive(timeout=60)
+                msg = await self.ws_connection.receive(timeout=REQUEST_TIMEOUT)
                 if msg is aiohttp.http.WS_CLOSED_MESSAGE:
                     raise WebSocketReconnectError()
                 elif msg is aiohttp.http.WS_CLOSING_MESSAGE:
