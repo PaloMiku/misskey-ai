@@ -33,6 +33,8 @@ class StreamingClient(IStreamingClient):
         self.running = False
         self.should_reconnect = True
         self._first_connection = True
+        self._reconnect_count = 0
+        self._max_retry_delay = 300  # 最大延时5分钟
 
     async def __aenter__(self):
         return self
@@ -45,6 +47,7 @@ class StreamingClient(IStreamingClient):
         await self.disconnect()
         await self._close_websocket()
         self.processed_events.clear()
+        self._reconnect_count = 0  # 重置重连计数器
         logger.debug("Streaming 客户端已关闭")
 
     def on_mention(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
@@ -60,19 +63,53 @@ class StreamingClient(IStreamingClient):
         self, channels: Optional[list[str]] = None, *, reconnect: bool = True
     ) -> None:
         self.should_reconnect = reconnect
+        self._reconnect_count = 0  # 重置重连计数器
         while True:
             try:
                 await self._connect_once(channels)
+                self._reconnect_count = 0  # 连接成功后重置计数器
                 await self._listen_messages()
             except WebSocketReconnectError:
                 if not self.should_reconnect:
                     break
-                logger.debug("空闲连接被关闭，重新连接...")
-                await asyncio.sleep(3)
+                logger.debug("空闲连接被关闭，准备重新连接...")
+                await self._reconnect_with_backoff()
             except WebSocketConnectionError:
                 if not self.should_reconnect:
                     break
-                await asyncio.sleep(3)
+                logger.error("WebSocket 连接失败，准备重新连接...")
+                await self._reconnect_with_backoff()
+
+    async def _reconnect_with_backoff(self) -> None:
+        """带有递增延时和倒计时的重连机制"""
+        self._reconnect_count += 1
+        
+        # 计算延时：基础延时 * 2^(重连次数-1)，但不超过最大延时
+        base_delay = 3
+        delay = min(base_delay * (2 ** (self._reconnect_count - 1)), self._max_retry_delay)
+        
+        logger.info(f"第 {self._reconnect_count} 次重连，将在 {delay} 秒后重试...")
+        
+        # 倒计时显示
+        remaining = delay
+        while remaining > 0:
+            if not self.should_reconnect:
+                return
+            
+            if remaining >= 60:
+                minutes = remaining // 60
+                seconds = remaining % 60
+                if seconds == 0:
+                    logger.info(f"重连倒计时: {minutes} 分钟")
+                else:
+                    logger.info(f"重连倒计时: {minutes} 分 {seconds} 秒")
+            else:
+                logger.info(f"重连倒计时: {remaining} 秒")
+            
+            # 每次等待1秒或剩余时间（如果小于1秒）
+            wait_time = min(1, remaining)
+            await asyncio.sleep(wait_time)
+            remaining -= wait_time
 
     async def wait_for_connection(self, timeout: float = 10.0) -> bool:
         start_time = asyncio.get_event_loop().time()
@@ -85,6 +122,7 @@ class StreamingClient(IStreamingClient):
     async def disconnect(self) -> None:
         self.should_reconnect = False
         self.running = False
+        self._reconnect_count = 0  # 重置重连计数器
         await self._disconnect_all_channels()
         await self._close_websocket()
         self.processed_events.clear()
@@ -96,6 +134,18 @@ class StreamingClient(IStreamingClient):
             and not self.ws_connection.closed
             and self.running
         )
+
+    @property
+    def reconnect_info(self) -> Dict[str, Any]:
+        """获取重连信息"""
+        base_delay = 3
+        next_delay = min(base_delay * (2 ** self._reconnect_count), self._max_retry_delay)
+        return {
+            "reconnect_count": self._reconnect_count,
+            "next_delay": next_delay,
+            "max_delay": self._max_retry_delay,
+            "should_reconnect": self.should_reconnect
+        }
 
     @property
     def _ws_available(self) -> bool:
