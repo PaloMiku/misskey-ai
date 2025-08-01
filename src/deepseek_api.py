@@ -71,13 +71,13 @@ class DeepSeekAPI(ITextGenerator):
             return self._process_api_response(response, call_type)
         except BadRequestError as e:
             logger.error(f"API 请求参数错误: {e}")
-            raise ValueError("API 请求参数错误") from e
+            raise ValueError() from e
         except AuthenticationError as e:
             logger.error(f"API 认证失败: {e}")
             raise AuthenticationError() from e
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"API 响应数据格式错误: {e}")
-            raise ValueError("API 响应数据格式错误") from e
+            raise ValueError() from e
 
     async def _make_api_request(
         self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
