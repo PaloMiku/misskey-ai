@@ -24,12 +24,8 @@ class HTTPClient:
     def _connector(self) -> aiohttp.TCPConnector:
         if self.__connector is None or self.__connector.closed:
             self.__connector = aiohttp.TCPConnector(
-                limit=100,
-                limit_per_host=30,
-                ttl_dns_cache=300,
-                use_dns_cache=True,
-                keepalive_timeout=30,
                 enable_cleanup_closed=True,
+                force_close=True,
             )
         return self.__connector
 
