@@ -83,11 +83,11 @@ class PersistenceManager:
             return
         await self._create_tables()
         self._initialized = True
-        logger.debug(f"持久化管理器已初始化，数据库: {self.db_path}")
+        logger.info(f"Persistence 管理器初始化完成: {self.db_path}")
 
     async def close(self) -> None:
         await self._pool.close_all()
-        logger.debug("持久化管理器已关闭")
+        logger.debug("Persistence 管理器已关闭")
 
     async def _create_tables(self) -> None:
         conn = await self._pool.get_connection()

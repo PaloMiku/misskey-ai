@@ -94,7 +94,7 @@ class MisskeyBot:
         try:
             current_user = await self.misskey.get_current_user()
             self.bot_user_id = current_user.get("id")
-            logger.info(f"已连接 Misskey 实例，用户 ID: {self.bot_user_id}")
+            logger.info(f"已连接 Misskey 实例，机器人 ID: {self.bot_user_id}")
         except (APIConnectionError, AuthenticationError, ValueError) as e:
             logger.error(f"连接 Misskey 实例失败: {e}")
             self.bot_user_id = None

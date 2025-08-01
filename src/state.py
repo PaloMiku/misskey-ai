@@ -55,4 +55,4 @@ class BotState:
 
     def reset_daily_counters(self) -> None:
         self.posts_today = 0
-        logger.debug("每日计数器已重置")
+        logger.debug("发帖计数器已重置")

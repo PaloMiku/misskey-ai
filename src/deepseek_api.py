@@ -45,7 +45,7 @@ class DeepSeekAPI(ITextGenerator):
 
     async def initialize(self) -> None:
         if not self._initialized:
-            logger.debug(f"DeepSeek API 客户端初始化完成，base_url={self.api_base}")
+            logger.info(f"DeepSeek API 客户端初始化完成: {self.api_base}")
             self._initialized = True
 
     @retry_async(
