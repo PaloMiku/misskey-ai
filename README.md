@@ -6,7 +6,7 @@
 使用 DeepSeek 生成的内容发帖或与用户互动<br>
 支持兼容 OpenAI API 架构的其他模型<br>
 目前运行在：[oreeke.com/@ai](https://oreeke.com/@ai)
-
+[misskey.site/@misuki](misskey.site/@misuki)
 <br>
 
 <a href="https://www.python.org/downloads">
