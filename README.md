@@ -74,9 +74,12 @@ log:
 ```
 </details>
 
+使用 uv 管理依赖
+
 ```bash
-pip install -r requirements.txt
-python run.py
+pip install uv # 对于 Arch Linux 调试使用 python-uv 包
+uv sync
+uv run run.py
 ```
 
 > 后台运行（可选）

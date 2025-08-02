@@ -47,3 +47,6 @@ data/
 *.pem
 *.key
 *.crt
+
+# uv files
+uv.lock
