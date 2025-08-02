@@ -1,3 +1,7 @@
+> [!NOTE]
+>
+> 本仓库是上游仓库的 Fork 魔改版本！存在诸多不稳定因素，请注意！
+
 <div align="center">
 
 <h1>Misskey AI</h1>
@@ -6,13 +10,7 @@
 使用 DeepSeek 生成的内容发帖或与用户互动<br>
 支持兼容 OpenAI API 架构的其他模型<br>
 
-> [!NOTE]
->
-> 本仓库是上游仓库的 Fork 魔改版本！存在诸多不稳定因素，请注意！
-
-
-目前运行在：
-- [misskey.site/@misuki](misskey.site/@misuki)
+目前运行在：[misskey.site/@misuki](misskey.site/@misuki)
 <br>
 
 <a href="https://www.python.org/downloads">
