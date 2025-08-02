@@ -166,6 +166,39 @@ class StatusPlugin(PluginBase):
         if self.current_session_start:
             await self._end_current_session()
 
+    async def on_mention(self, mention_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """处理提及消息，检查是否为手动触发状态统计"""
+        if not self.manual_trigger_enabled:
+            return None
+            
+        try:
+            # 获取消息文本
+            note_data = mention_data.get("note", {})
+            text = note_data.get("text", "").strip()
+            
+            # 检查是否包含状态标签
+            if self.status_tag in text:
+                logger.info(f"检测到手动触发状态统计请求: {text}")
+                
+                # 生成昨日统计报告
+                report = await self._generate_yesterday_report()
+                if report:
+                    return {
+                        "handled": True,
+                        "plugin_name": self.name,
+                        "response": report
+                    }
+                else:
+                    return {
+                        "handled": True,
+                        "plugin_name": self.name,
+                        "response": "抱歉，无法生成昨日统计报告，可能还没有足够的数据。"
+                    }
+            
+        except Exception as e:
+            logger.error(f"Status 插件处理提及失败: {e}")
+            return None
+
     async def on_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """处理消息，检查是否为手动触发状态统计"""
         if not self.manual_trigger_enabled:
