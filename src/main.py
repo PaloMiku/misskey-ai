@@ -53,24 +53,23 @@ async def main() -> None:
 
 async def _setup_monitoring_and_signals() -> None:
     global tasks
-    loop = asyncio.get_running_loop()
     signals = (
         (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
         if sys.platform != "win32"
         else (signal.SIGINT, signal.SIGTERM)
     )
+
+    def signal_handler(sig, _):
+        global shutdown_event
+        logger.info(f"收到信号 {signal.Signals(sig).name}，准备关闭...")
+        if shutdown_event and not shutdown_event.is_set():
+            shutdown_event.set()
+
     for sig in signals:
-        if sys.platform != "win32":
-            loop.add_signal_handler(sig, _signal_handler, sig)
-        else:
-            signal.signal(sig, lambda s, f: _signal_handler(signal.Signals(s)))
-
-
-def _signal_handler(sig):
-    global shutdown_event
-    logger.info(f"收到信号 {sig.name}，准备关闭...")
-    if shutdown_event and not shutdown_event.is_set():
-        shutdown_event.set()
+        try:
+            signal.signal(sig, signal_handler)
+        except (OSError, ValueError, NotImplementedError):
+            logger.warning(f"无法注册信号处理器: {sig}")
 
 
 async def shutdown() -> None:

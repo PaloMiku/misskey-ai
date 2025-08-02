@@ -165,7 +165,7 @@ class Config(IConfigProvider):
             (ConfigKeys.MISSKEY_ACCESS_TOKEN, "Misskey 访问令牌"),
             (ConfigKeys.DEEPSEEK_API_KEY, "DeepSeek API 密钥"),
             (ConfigKeys.DEEPSEEK_MODEL, "DeepSeek 模型名称"),
-            (ConfigKeys.DEEPSEEK_API_BASE, "DeepSeek API 基础 URL"),
+            (ConfigKeys.DEEPSEEK_API_BASE, "DeepSeek API 端点"),
         ]
         for config_key, display_name in required_configs:
             value = self.get(config_key)

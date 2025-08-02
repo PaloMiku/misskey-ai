@@ -11,7 +11,7 @@ from loguru import logger
 
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .interfaces import IStreamingClient
-from .constants import MAX_CACHE, REQUEST_TIMEOUT
+from .constants import MAX_CACHE, RECEIVE_TIMEOUT
 from .http_client import HTTPSession
 
 __all__ = ("ChannelType", "StreamingClient")
@@ -179,7 +179,7 @@ class StreamingClient(IStreamingClient):
         await self.ws_connection.send_json(message)
         self.channels[channel_id] = {"type": channel_type, "params": params or {}}
         if self._first_connection:
-            logger.debug(f"已连接频道: {channel_type.value} (ID: {channel_id})")
+            logger.info(f"已连接频道: {channel_type.value} (ID: {channel_id})")
         return channel_id
 
     async def disconnect_channel(self, channel_type: ChannelType) -> None:
@@ -213,7 +213,7 @@ class StreamingClient(IStreamingClient):
         else:
             await self.connect_channel(ChannelType.MAIN)
         if self._first_connection:
-            logger.debug("Streaming 客户端已启动")
+            logger.info("Streaming 客户端已启动")
             self._first_connection = False
 
     async def _connect_websocket(self) -> None:
@@ -225,7 +225,7 @@ class StreamingClient(IStreamingClient):
         try:
             self.ws_connection = await self.http_client.ws_connect(ws_url)
             if self._first_connection:
-                logger.debug(f"WebSocket 连接成功: {safe_url}")
+                logger.info(f"WebSocket 连接成功: {safe_url}")
         except Exception:
             await self._cleanup_failed_connection()
             logger.error("WebSocket 连接失败")
@@ -235,7 +235,7 @@ class StreamingClient(IStreamingClient):
     async def _listen_messages(self) -> None:
         while self.running and self._ws_available:
             try:
-                msg = await self.ws_connection.receive(timeout=REQUEST_TIMEOUT)
+                msg = await self.ws_connection.receive(timeout=RECEIVE_TIMEOUT)
                 if msg is aiohttp.http.WS_CLOSED_MESSAGE:
                     raise WebSocketReconnectError()
                 elif msg is aiohttp.http.WS_CLOSING_MESSAGE:

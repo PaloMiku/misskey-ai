@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-import sys
 
 from src.main import main, shutdown
 
@@ -20,7 +19,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        sys.platform == "win32" and asyncio.run(handle_shutdown())
+        asyncio.run(handle_shutdown())
         print("\n机器人已停止")
     except (
         OSError,

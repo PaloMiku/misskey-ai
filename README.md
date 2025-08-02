@@ -43,7 +43,7 @@ misskey:
 deepseek:
   api_key: "your_deepseek_api_key_here"             # DeepSeek API 密钥
   model: "deepseek-chat"                            # 使用的模型名称
-  api_base: "https://api.deepseek.com/v1"           # DeepSeek API 基础 URL
+  api_base: "https://api.deepseek.com/v1"           # DeepSeek API 端点
   max_tokens: 1000                                  # 最大生成 token 数
   temperature: 0.8                                  # 温度参数
 
@@ -121,7 +121,7 @@ MISSKEY_INSTANCE_URL=https://misskey.example.com           # Misskey 实例 URL
 MISSKEY_ACCESS_TOKEN=your_access_token_here                # Misskey 访问令牌
 DEEPSEEK_API_KEY=your_deepseek_api_key_here                # DeepSeek API 密钥
 DEEPSEEK_MODEL=deepseek-chat                               # 使用的模型名称
-DEEPSEEK_API_BASE=https://api.deepseek.com/v1              # DeepSeek API 基础 URL
+DEEPSEEK_API_BASE=https://api.deepseek.com/v1              # DeepSeek API 端点
 DEEPSEEK_MAX_TOKENS=1000                                   # DeepSeek 最大生成 token 数
 DEEPSEEK_TEMPERATURE=0.8                                   # DeepSeek 温度参数
 BOT_SYSTEM_PROMPT=你是一个可爱的AI助手...                    # 系统提示词（支持文件导入："prompts/*.txt"，"file://path/to/*.txt"）
