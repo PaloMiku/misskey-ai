@@ -5,7 +5,7 @@ import re
 import io
 import aiohttp
 from typing import Dict, Any, Optional
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageFilter
 
 from loguru import logger
 
@@ -20,14 +20,14 @@ class AsciiArtPlugin(PluginBase):
         self.session = None
         
         # 从配置中获取参数
-        self.width = self.config.get("width", 80)
-        self.height = self.config.get("height", 40)
-        self.chars = self.config.get("chars", " .:-=+*#%@")
+        self.width = self.config.get("width", 60)
+        self.height = self.config.get("height", 30)
+        self.chars = self.config.get("chars", " ░▒▓█")
         self.tag = self.config.get("tag", "#ascii")
         
         # 确保字符集按亮度排序
         if len(self.chars) < 2:
-            self.chars = " .:-=+*#%@"
+            self.chars = " ░▒▓█"
 
     async def initialize(self) -> bool:
         """初始化插件"""
@@ -145,28 +145,36 @@ class AsciiArtPlugin(PluginBase):
             if image.mode != 'L':
                 image = image.convert('L')
             
-            # 增强对比度
+            # 增强图片质量
+            # 1. 锐化处理
+            image = image.filter(ImageFilter.SHARPEN)
+            
+            # 2. 自适应对比度增强
             enhancer = ImageEnhance.Contrast(image)
-            image = enhancer.enhance(1.5)
+            image = enhancer.enhance(1.8)
+            
+            # 3. 亮度调整
+            brightness_enhancer = ImageEnhance.Brightness(image)
+            image = brightness_enhancer.enhance(1.1)
             
             # 计算合适的尺寸，保持宽高比
             original_width, original_height = image.size
             aspect_ratio = original_height / original_width
             
-            # 调整宽度和高度
+            # 调整宽度和高度，针对Unicode块字符优化比例
             new_width = self.width
-            new_height = int(aspect_ratio * new_width * 0.55)  # 0.55 是字符高宽比的补偿
+            new_height = int(aspect_ratio * new_width * 0.5)  # Unicode块字符接近正方形，调整比例
             
             # 限制最大高度
             if new_height > self.height:
                 new_height = self.height
-                new_width = int(new_height / aspect_ratio / 0.55)
+                new_width = int(new_height / aspect_ratio / 0.5)
             
-            # 调整图片大小
+            # 使用高质量重采样
             image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
             
             # 转换为ASCII
-            ascii_art = self._image_to_ascii(image)
+            ascii_art = self._image_to_ascii_enhanced(image)
             
             return ascii_art
             
@@ -228,6 +236,58 @@ class AsciiArtPlugin(PluginBase):
         except Exception as e:
             logger.error(f"图片转ASCII时出错: {e}")
             return ""
+
+    def _image_to_ascii_enhanced(self, image: Image.Image) -> str:
+        """将PIL图片对象转换为ASCII字符串（增强版）"""
+        try:
+            pixels = list(image.getdata())
+            width, height = image.size
+            
+            # 计算直方图均衡化
+            hist = [0] * 256
+            for pixel in pixels:
+                hist[pixel] += 1
+            
+            # 计算累积分布函数
+            cdf = [0] * 256
+            cdf[0] = hist[0]
+            for i in range(1, 256):
+                cdf[i] = cdf[i-1] + hist[i]
+            
+            # 归一化CDF
+            total_pixels = len(pixels)
+            normalized_cdf = [int(255 * cdf[i] / total_pixels) for i in range(256)]
+            
+            # 应用直方图均衡化
+            equalized_pixels = [normalized_cdf[pixel] for pixel in pixels]
+            
+            ascii_lines = []
+            char_count = len(self.chars)
+            
+            for y in range(height):
+                line = ""
+                for x in range(width):
+                    pixel_index = y * width + x
+                    if pixel_index < len(equalized_pixels):
+                        # 获取均衡化后的亮度值
+                        brightness = equalized_pixels[pixel_index]
+                        
+                        # 反转亮度映射（暗像素对应复杂字符）
+                        reversed_brightness = 255 - brightness
+                        char_index = min(int(reversed_brightness * char_count / 256), char_count - 1)
+                        
+                        line += self.chars[char_index]
+                    else:
+                        line += self.chars[0]
+                
+                ascii_lines.append(line)
+            
+            return '\n'.join(ascii_lines)
+            
+        except Exception as e:
+            logger.error(f"增强ASCII转换时出错: {e}")
+            # 回退到基础方法
+            return self._image_to_ascii(image)
 
     def _create_response(self, response_text: str, content_key: str = "response") -> Dict[str, Any]:
         """创建插件响应"""

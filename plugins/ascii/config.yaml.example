@@ -1,7 +1,7 @@
 enabled: true
 priority: 40
 # ASCII 艺术配置
-width: 80       # ASCII 艺术的宽度
-height: 40      # ASCII 艺术的最大高度
-chars: " .:-=+*#%@"  # 用于生成 ASCII 艺术的字符集，从暗到亮
+width: 60       # ASCII 艺术的宽度
+height: 30      # ASCII 艺术的最大高度
+chars: " ░▒▓█"  # 用于生成 ASCII 艺术的字符集，从暗到亮，使用Unicode块字符获得更细腻效果
 tag: "#ascii"   # 触发 ASCII 转换的标签
