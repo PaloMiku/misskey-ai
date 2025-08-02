@@ -5,17 +5,20 @@
 一只 Python 实现的 Misskey 机器人<br>
 使用 DeepSeek 生成的内容发帖或与用户互动<br>
 支持兼容 OpenAI API 架构的其他模型<br>
-目前运行在：[oreeke.com/@ai](https://oreeke.com/@ai)
-[misskey.site/@misuki](misskey.site/@misuki)
+
+> [!NOTE]
+>
+> 本仓库是上游仓库的 Fork 魔改版本！存在诸多不稳定因素，请注意！
+
+
+目前运行在：
+- [misskey.site/@misuki](misskey.site/@misuki)
 <br>
 
 <a href="https://www.python.org/downloads">
     <img alt="python 3.11+" src="https://img.shields.io/badge/python-3.11+-3776ab.svg?style=for-the-badge&labelColor=303030"></a>
 <a href="./LICENSE">
     <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-603669.svg?style=for-the-badge&labelColor=303030"></a>
-<a href="https://oreeke.com">
-    <img alt="join the fediverse" src="https://img.shields.io/badge/join_the-fediverse-ce6641.svg?style=for-the-badge&labelColor=303030"></a>
-
 </div>
 
 ## 快速开始
