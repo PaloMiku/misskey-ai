@@ -25,6 +25,12 @@ class AsciiArtPlugin(PluginBase):
         self.chars = self.config.get("chars", " ░▒▓█")
         self.tag = self.config.get("tag", "#ascii")
         
+        # 新增自动比例相关配置
+        self.auto_scale = self.config.get("auto_scale", True)
+        self.max_width = self.config.get("max_width", 80)
+        self.max_height = self.config.get("max_height", 40)
+        self.preserve_aspect = self.config.get("preserve_aspect", True)
+        
         # 确保字符集按亮度排序
         if len(self.chars) < 2:
             self.chars = " ░▒▓█"
@@ -36,7 +42,9 @@ class AsciiArtPlugin(PluginBase):
             self.session = aiohttp.ClientSession()
             self._register_resource(self.session, "close")
             
-            self._log_plugin_action("初始化完成", f"ASCII宽度: {self.width}, 高度: {self.height}, 触发标签: {self.tag}")
+            scale_mode = "自动" if self.auto_scale else "固定"
+            self._log_plugin_action("初始化完成", 
+                f"缩放模式: {scale_mode}, 最大尺寸: {self.max_width}x{self.max_height}, 触发标签: {self.tag}")
             return True
         except Exception as e:
             logger.error(f"AsciiArtPlugin 初始化失败: {e}")
@@ -157,18 +165,9 @@ class AsciiArtPlugin(PluginBase):
             brightness_enhancer = ImageEnhance.Brightness(image)
             image = brightness_enhancer.enhance(1.1)
             
-            # 计算合适的尺寸，保持宽高比
+            # 计算最优尺寸
             original_width, original_height = image.size
-            aspect_ratio = original_height / original_width
-            
-            # 调整宽度和高度，针对Unicode块字符优化比例
-            new_width = self.width
-            new_height = int(aspect_ratio * new_width * 0.5)  # Unicode块字符接近正方形，调整比例
-            
-            # 限制最大高度
-            if new_height > self.height:
-                new_height = self.height
-                new_width = int(new_height / aspect_ratio / 0.5)
+            new_width, new_height = self._calculate_optimal_size(original_width, original_height)
             
             # 使用高质量重采样
             image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
@@ -207,6 +206,83 @@ class AsciiArtPlugin(PluginBase):
         except Exception as e:
             logger.error(f"下载图片时出错: {e}")
             return None
+
+    def _calculate_optimal_size(self, original_width: int, original_height: int) -> tuple:
+        """计算最优的ASCII艺术尺寸"""
+        try:
+            if not self.auto_scale:
+                # 使用固定尺寸模式
+                if self.preserve_aspect:
+                    aspect_ratio = original_height / original_width
+                    new_width = self.width
+                    new_height = int(aspect_ratio * new_width * 0.5)  # 字符高宽比补偿
+                    
+                    if new_height > self.height:
+                        new_height = self.height
+                        new_width = int(new_height / aspect_ratio / 0.5)
+                    
+                    return new_width, new_height
+                else:
+                    return self.width, self.height
+            
+            # 自动缩放模式
+            aspect_ratio = original_height / original_width
+            
+            # 字符高宽比补偿因子
+            char_aspect_compensation = 0.5  # Unicode块字符接近正方形
+            
+            # 根据图片比例特点选择最优尺寸策略
+            if aspect_ratio > 1.5:  # 高图片（竖图）
+                # 以高度为主要限制
+                target_height = min(self.max_height, int(self.max_width * aspect_ratio * char_aspect_compensation))
+                target_width = int(target_height / aspect_ratio / char_aspect_compensation)
+                
+                # 确保不超过最大宽度
+                if target_width > self.max_width:
+                    target_width = self.max_width
+                    target_height = int(target_width * aspect_ratio * char_aspect_compensation)
+                    
+            elif aspect_ratio < 0.6:  # 宽图片（横图）
+                # 以宽度为主要限制
+                target_width = self.max_width
+                target_height = int(target_width * aspect_ratio * char_aspect_compensation)
+                
+                # 确保不超过最大高度
+                if target_height > self.max_height:
+                    target_height = self.max_height
+                    target_width = int(target_height / aspect_ratio / char_aspect_compensation)
+                    
+            else:  # 方形或接近方形的图片
+                # 平衡宽度和高度
+                target_width = min(self.max_width, int(self.max_height / aspect_ratio / char_aspect_compensation))
+                target_height = int(target_width * aspect_ratio * char_aspect_compensation)
+                
+                # 双向检查限制
+                if target_height > self.max_height:
+                    target_height = self.max_height
+                    target_width = int(target_height / aspect_ratio / char_aspect_compensation)
+                elif target_width > self.max_width:
+                    target_width = self.max_width
+                    target_height = int(target_width * aspect_ratio * char_aspect_compensation)
+            
+            # 确保最小尺寸
+            target_width = max(target_width, 10)
+            target_height = max(target_height, 5)
+            
+            # 确保最大尺寸
+            target_width = min(target_width, self.max_width)
+            target_height = min(target_height, self.max_height)
+            
+            logger.debug(f"原始尺寸: {original_width}x{original_height}, "
+                        f"目标尺寸: {target_width}x{target_height}, "
+                        f"宽高比: {aspect_ratio:.2f}")
+            
+            return target_width, target_height
+            
+        except Exception as e:
+            logger.error(f"计算最优尺寸时出错: {e}")
+            # 回退到默认尺寸
+            return self.width, self.height
 
     def _image_to_ascii(self, image: Image.Image) -> str:
         """将PIL图片对象转换为ASCII字符串"""
