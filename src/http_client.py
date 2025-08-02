@@ -1,5 +1,4 @@
 import sys
-import asyncio
 import aiohttp
 from typing import Optional, Any
 from loguru import logger
@@ -24,11 +23,6 @@ class HTTPClient:
     @property
     def _connector(self) -> aiohttp.TCPConnector:
         if self.__connector is None or self.__connector.closed:
-            if self.__connector and not self.__connector.closed:
-                try:
-                    self.__connector.close()
-                except (OSError, RuntimeError):
-                    pass
             self.__connector = aiohttp.TCPConnector(
                 enable_cleanup_closed=True,
                 force_close=True,
@@ -38,15 +32,6 @@ class HTTPClient:
     @property
     def session(self) -> aiohttp.ClientSession:
         if self.__session is None or self.__session.closed:
-            if self.__session and not self.__session.closed:
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        loop.create_task(self.__session.close())
-                    else:
-                        loop.run_until_complete(self.__session.close())
-                except (OSError, RuntimeError, asyncio.InvalidStateError):
-                    pass
             self.__session = aiohttp.ClientSession(
                 headers=self._default_headers,
                 timeout=aiohttp.ClientTimeout(total=API_TIMEOUT, connect=10),
@@ -56,17 +41,18 @@ class HTTPClient:
         return self.__session
 
     async def close_session(self) -> None:
-        async def safe_close(resource, name, exceptions=(OSError, RuntimeError)):
-            if resource and not resource.closed:
-                try:
-                    await resource.close()
-                except exceptions as e:
-                    logger.warning(f"关闭{name}时出错: {e}")
+        if self.__session and not self.__session.closed:
+            try:
+                await self.__session.close()
+            except (OSError, RuntimeError, aiohttp.ClientError) as e:
+                logger.warning(f"关闭会话时出错: {e}")
 
-        await safe_close(
-            self.__session, "会话", (OSError, RuntimeError, aiohttp.ClientError)
-        )
-        await safe_close(self.__connector, "连接器")
+        if self.__connector and not self.__connector.closed:
+            try:
+                self.__connector.close()
+            except (OSError, RuntimeError) as e:
+                logger.warning(f"关闭连接器时出错: {e}")
+
         self.__session = self.__connector = None
         logger.debug("HTTP 会话已关闭")
 

@@ -11,7 +11,7 @@ from loguru import logger
 
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .interfaces import IStreamingClient
-from .constants import MAX_CACHE, RECEIVE_TIMEOUT
+from .constants import MAX_CACHE
 from .http_client import HTTPSession
 
 __all__ = ("ChannelType", "StreamingClient")
@@ -74,28 +74,12 @@ class StreamingClient(IStreamingClient):
                     break
                 await asyncio.sleep(3)
 
-    async def wait_for_connection(self, timeout: float = 10.0) -> bool:
-        start_time = asyncio.get_event_loop().time()
-        while not self.is_connected:
-            if asyncio.get_event_loop().time() - start_time > timeout:
-                return False
-            await asyncio.sleep(0.1)
-        return True
-
     async def disconnect(self) -> None:
         self.should_reconnect = False
         self.running = False
         await self._disconnect_all_channels()
         await self._close_websocket()
         self.processed_events.clear()
-
-    @property
-    def is_connected(self) -> bool:
-        return (
-            self.ws_connection is not None
-            and not self.ws_connection.closed
-            and self.running
-        )
 
     @property
     def _ws_available(self) -> bool:
@@ -185,7 +169,7 @@ class StreamingClient(IStreamingClient):
     async def _listen_messages(self) -> None:
         while self.running and self._ws_available:
             try:
-                msg = await self.ws_connection.receive(timeout=RECEIVE_TIMEOUT)
+                msg = await self.ws_connection.receive()
                 if msg is aiohttp.http.WS_CLOSED_MESSAGE:
                     raise WebSocketReconnectError()
                 elif msg is aiohttp.http.WS_CLOSING_MESSAGE:
@@ -196,10 +180,9 @@ class StreamingClient(IStreamingClient):
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     raise WebSocketReconnectError()
             except (
-                asyncio.TimeoutError,
                 aiohttp.ClientError,
-                OSError,
                 json.JSONDecodeError,
+                OSError,
             ):
                 raise WebSocketReconnectError()
             except (ValueError, TypeError, AttributeError, KeyError) as e:

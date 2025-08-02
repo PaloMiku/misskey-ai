@@ -51,10 +51,6 @@ class IStreamingClient(ABC):
     def on_message(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
         pass
 
-    @abstractmethod
-    def is_connected(self) -> bool:
-        pass
-
 
 class ITextGenerator(ABC):
     @abstractmethod
