@@ -4,7 +4,7 @@
 import os
 from functools import reduce
 from pathlib import Path
-from typing import Any, Dict, Optional, TypeVar
+from typing import Any, Dict, Optional
 
 import yaml
 from loguru import logger
@@ -14,8 +14,6 @@ from .interfaces import IConfigProvider
 from .constants import ConfigKeys
 
 __all__ = ("Config",)
-
-T = TypeVar("T")
 
 
 class Config(IConfigProvider):
@@ -65,7 +63,7 @@ class Config(IConfigProvider):
             "BOT_RESPONSE_CHAT_ENABLED": (ConfigKeys.BOT_RESPONSE_CHAT_ENABLED, bool),
             "BOT_RESPONSE_CHAT_MEMORY": (ConfigKeys.BOT_RESPONSE_CHAT_MEMORY, int),
             "DB_PATH": (ConfigKeys.DB_PATH, str),
-            "DB_CLEANUP_DAYS": (ConfigKeys.DB_CLEANUP_DAYS, int),
+            # "DB_CLEANUP_DAYS": (ConfigKeys.DB_CLEANUP_DAYS, int),
             "LOG_PATH": (ConfigKeys.LOG_PATH, str),
             "LOG_LEVEL": (ConfigKeys.LOG_LEVEL, str),
         }
@@ -148,7 +146,7 @@ class Config(IConfigProvider):
             ConfigKeys.BOT_RESPONSE_CHAT_ENABLED: True,
             ConfigKeys.BOT_RESPONSE_CHAT_MEMORY: 10,
             ConfigKeys.DB_PATH: "data/misskey_ai.db",
-            ConfigKeys.DB_CLEANUP_DAYS: 30,
+            # ConfigKeys.DB_CLEANUP_DAYS: 30,
             ConfigKeys.LOG_PATH: "logs/misskey_ai.log",
             ConfigKeys.LOG_LEVEL: "INFO",
         }
@@ -167,10 +165,10 @@ class Config(IConfigProvider):
             (ConfigKeys.DEEPSEEK_MODEL, "DeepSeek 模型名称"),
             (ConfigKeys.DEEPSEEK_API_BASE, "DeepSeek API 端点"),
         ]
-        for config_key, display_name in required_configs:
+        for config_key, desc in required_configs:
             value = self.get(config_key)
             if not value or (isinstance(value, str) and not value.strip()):
-                raise ConfigurationError()
+                raise ConfigurationError(f"缺少必要配置项: {desc}")
 
     def _validate_file_paths(self) -> None:
         paths = [
@@ -182,15 +180,5 @@ class Config(IConfigProvider):
                 try:
                     Path(path).parent.mkdir(parents=True, exist_ok=True)
                 except (OSError, PermissionError) as e:
-                    logger.error(f"创建目录失败 {path}: {e}")
-                    raise ConfigurationError() from e
-
-    def get_typed(
-        self, key: str, default: T = None, expected_type: Optional[type] = None
-    ) -> T:
-        value = self.get(key, default)
-        if expected_type and value is not None and not isinstance(value, expected_type):
-            raise ValueError(
-                f"配置项 {key} 期望类型 {expected_type.__name__}，实际类型 {type(value).__name__}"
-            )
-        return value
+                    logger.error(f"创建{desc}失败 {path}: {e}")
+                    raise ConfigurationError(f"无法创建{desc}: {path}") from e

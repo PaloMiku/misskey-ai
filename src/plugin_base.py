@@ -101,6 +101,7 @@ class PluginBase(IPlugin):
     def _extract_username(self, data: Dict[str, Any]) -> str:
         return extract_username(data)
 
+    # RESERVED
     def _extract_user_id(self, data: Dict[str, Any]) -> Optional[str]:
         return extract_user_id(data)
 

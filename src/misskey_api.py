@@ -98,6 +98,7 @@ class MisskeyAPI(IAPIClient):
             logger.error(f"HTTP 请求错误: {e}")
             raise APIConnectionError() from e
 
+    # RESERVED
     async def request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -161,22 +162,6 @@ class MisskeyAPI(IAPIClient):
     async def get_note(self, note_id: str) -> Dict[str, Any]:
         return await self._make_request("notes/show", {"noteId": note_id})
 
-    async def get_mentions(
-        self, limit: int = 10, since_id: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        data = {"limit": limit}
-        if since_id:
-            data["sinceId"] = since_id
-        return await self._make_request("notes/mentions", data)
-
-    async def get_user(
-        self, user_id: Optional[str] = None, username: Optional[str] = None
-    ) -> Dict[str, Any]:
-        if not (user_id or username):
-            raise ValueError("必须提供 user_id 或 username")
-        data = {"userId": user_id} if user_id else {"username": username}
-        return await self._make_request("users/show", data)
-
     async def get_current_user(self) -> Dict[str, Any]:
         return await self._make_request("i", {})
 
@@ -194,16 +179,3 @@ class MisskeyAPI(IAPIClient):
         if since_id:
             data["sinceId"] = since_id
         return await self._make_request("chat/messages/user-timeline", data)
-
-    async def get_all_chat_messages(
-        self, limit: int = 10, room: bool = False
-    ) -> List[Dict[str, Any]]:
-        try:
-            chat_messages = await self._make_request(
-                "chat/history", {"limit": limit, "room": room}
-            )
-            logger.debug(f"通过 chat/history API 获取到 {len(chat_messages)} 条聊天")
-            return chat_messages
-        except (APIConnectionError, APIRateLimitError, ValueError) as e:
-            logger.debug(f"获取聊天失败: {e}")
-            return []

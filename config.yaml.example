@@ -30,8 +30,5 @@ bot:
     chat_enabled: true                              # 是否响应聊天
     chat_memory: 10                                 # 聊天上下文记忆长度（条）
 
-db:
-  cleanup_days: 30                                  # SQLite 旧消息 ID 保留天数
-
 log:
   level: "INFO"                                     # 日志级别 (DEBUG/INFO/WARNING/ERROR)

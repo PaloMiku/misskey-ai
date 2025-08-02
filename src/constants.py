@@ -16,7 +16,7 @@ class ConfigKeys:
     BOT_RESPONSE_CHAT_ENABLED = "bot.response.chat_enabled"
     BOT_RESPONSE_CHAT_MEMORY = "bot.response.chat_memory"
     DB_PATH = "db.path"
-    DB_CLEANUP_DAYS = "db.cleanup_days"
+    # DB_CLEANUP_DAYS = "db.cleanup_days"
     LOG_PATH = "log.path"
     LOG_LEVEL = "log.level"
 
@@ -43,7 +43,7 @@ API_MAX_RETRIES = 3
 REQUEST_TIMEOUT = 120
 
 WS_TIMEOUT = 30
-RECEIVE_TIMEOUT = 60
+# RECEIVE_TIMEOUT = 60
 
 MAX_CACHE = 500
 
