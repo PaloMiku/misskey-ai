@@ -41,8 +41,6 @@ class MisskeyBot:
         api_client: Optional[IAPIClient] = None,
         streaming_client: Optional[IStreamingClient] = None,
     ):
-        if not isinstance(config, Config):
-            raise ValueError("配置参数必须是 Config 类型")
         self.config = config
         self.startup_time = datetime.now(timezone.utc)
         try:
@@ -425,9 +423,7 @@ class MisskeyBot:
                 logger.info(
                     f"{result.get('plugin_name')} 插件请求修改提示词: {plugin_prompt}"
                 )
-        post_prompt = self.config.get(
-            ConfigKeys.BOT_AUTO_POST_PROMPT, "生成一篇有趣、有见解的社交媒体帖子。"
-        )
+        post_prompt = self.config.get(ConfigKeys.BOT_AUTO_POST_PROMPT, "")
         try:
             post_content = await self._generate_post_with_plugin(
                 self.system_prompt,
@@ -459,7 +455,7 @@ class MisskeyBot:
             datetime.now(timezone.utc).timestamp() // 60
         )
         full_prompt = f"[{timestamp_min}] {plugin_prompt}{prompt}"
-        return await self.deepseek.generate_text(
+        return await self.deepseek.generate_post(
             full_prompt, system_prompt, **(ai_config or self._ai_config)
         )
 

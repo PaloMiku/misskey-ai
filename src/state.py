@@ -33,12 +33,14 @@ class BotState:
         self.tasks[name] = task
         return task
 
+    # RESERVED
     def cancel_task(self, name: str) -> bool:
         if name in self.tasks and not self.tasks[name].done():
             self.tasks[name].cancel()
             return True
         return False
 
+    # RESERVED
     def cancel_all_tasks(self) -> None:
         for task in self.tasks.values():
             if not task.done():

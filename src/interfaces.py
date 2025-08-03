@@ -15,12 +15,6 @@ class IConfigProvider(ABC):
     def get(self, key: str, default: Any = None) -> Any:
         pass
 
-    @abstractmethod
-    def get_typed(
-        self, key: str, default: Any = None, expected_type: Optional[type] = None
-    ) -> Any:
-        pass
-
 
 class IAPIClient(ABC):
     @abstractmethod

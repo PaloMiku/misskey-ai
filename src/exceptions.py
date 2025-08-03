@@ -11,32 +11,32 @@ __all__ = (
 
 
 class MisskeyBotError(Exception):
-    """Base exception for all Misskey bot errors"""
+    """基础错误"""
 
 
 class ConfigurationError(MisskeyBotError):
-    """Configuration related errors"""
+    """配置错误"""
 
 
 class AuthenticationError(MisskeyBotError):
-    """Authentication related errors"""
+    """身份验证错误"""
 
 
 class APIConnectionError(MisskeyBotError):
-    """API connection related errors"""
+    """API 连接错误"""
 
 
 class APIRateLimitError(MisskeyBotError):
-    """API rate limit errors"""
+    """API 速率限制错误"""
 
 
 class WebSocketConnectionError(MisskeyBotError):
-    """WebSocket connection errors"""
+    """WebSocket 连接错误"""
 
 
 class WebSocketReconnectError(WebSocketConnectionError):
-    """WebSocket reconnection errors"""
+    """WebSocket 重连错误"""
 
 
 class ClientConnectorError(MisskeyBotError):
-    """Client connector errors"""
+    """HTTP 客户端连接器错误"""

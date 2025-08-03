@@ -4,7 +4,7 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 
 import aiosqlite
 from loguru import logger
@@ -155,6 +155,7 @@ class PersistenceManager:
             "update",
         )
 
+    # RESERVED
     async def delete_plugin_data(self, plugin_name: str, key: str = None) -> int:
         query = "DELETE FROM plugin_data WHERE plugin_name = ?" + (
             " AND key = ?" if key else ""
@@ -162,11 +163,12 @@ class PersistenceManager:
         params = (plugin_name, key) if key else (plugin_name,)
         return await self._execute(query, params, "update")
 
-    async def cleanup_old_records(self, days: Optional[int] = None) -> None:
-        if days is None:
-            days = self.config.get(ConfigKeys.DB_CLEANUP_DAYS)
-        pass
+    # async def cleanup_old_records(self, days: Optional[int] = None) -> None:
+    #     if days is None:
+    #         days = self.config.get(ConfigKeys.DB_CLEANUP_DAYS)
+    #     pass
 
+    # RESERVED
     async def get_statistics(self) -> Dict[str, Any]:
         today = datetime.now().date()
         query = """
@@ -192,14 +194,3 @@ class PersistenceManager:
             logger.error(f"数据库优化失败: {e}")
         finally:
             await self._pool.return_connection(conn)
-
-    async def execute_query(
-        self, query: str, params: tuple = ()
-    ) -> List[aiosqlite.Row]:
-        return await self._execute(query, params, "all")
-
-    async def execute_update(self, query: str, params: tuple = ()) -> int:
-        return await self._execute(query, params, "update")
-
-    async def execute_insert(self, query: str, params: tuple = ()) -> int:
-        return await self._execute(query, params, "insert")

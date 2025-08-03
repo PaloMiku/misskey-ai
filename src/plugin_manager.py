@@ -182,18 +182,22 @@ class PluginManager:
                 logger.error(f"调用插件 {plugin.name} 的 {hook_name} hook 时出错: {e}")
         return results
 
+    # RESERVED
     def get_plugin_info(self) -> List[Dict[str, Any]]:
         return [plugin.get_info() for plugin in self.plugins.values()]
 
+    # RESERVED
     def get_plugin(self, name: str) -> Optional[PluginBase]:
         return self.plugins.get(name)
 
+    # RESERVED
     def enable_plugin(self, name: str) -> bool:
         if plugin := self.plugins.get(name):
             plugin.set_enabled(True)
             return True
         return False
 
+    # RESERVED
     def disable_plugin(self, name: str) -> bool:
         if plugin := self.plugins.get(name):
             plugin.set_enabled(False)

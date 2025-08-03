@@ -148,24 +148,18 @@ class DeepSeekAPI(ITextGenerator):
 
     async def generate_post(
         self,
+        prompt: str,
         system_prompt: str,
-        prompt: Optional[str] = None,
-        max_tokens: int = 1000,
-        temperature: float = 0.8,
+        max_tokens: int,
+        temperature: float,
     ) -> str:
-        if not prompt or not prompt.strip():
-            raise ValueError("缺少提示词")
-        return await self.generate_text(
-            prompt, system_prompt, max_tokens=max_tokens, temperature=temperature
-        )
+        return await self.generate_text(prompt, system_prompt, max_tokens, temperature)
 
     async def generate_reply(
         self,
         original_text: str,
         system_prompt: str,
-        max_tokens: int = 1000,
-        temperature: float = 0.8,
+        max_tokens: int,
+        temperature: float,
     ) -> str:
-        return await self.generate_text(
-            original_text, system_prompt, max_tokens=max_tokens, temperature=temperature
-        )
+        return await self.generate_text(original_text, system_prompt, max_tokens, temperature)
