@@ -9,9 +9,9 @@ from typing import Any, Dict, Optional
 import yaml
 from loguru import logger
 
+from .constants import ConfigKeys
 from .exceptions import ConfigurationError
 from .interfaces import IConfigProvider
-from .constants import ConfigKeys
 
 __all__ = ("Config",)
 

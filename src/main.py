@@ -5,15 +5,15 @@ import asyncio
 import signal
 import sys
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
-from loguru import logger
 from dotenv import load_dotenv
+from loguru import logger
 
-from .config import Config
 from .bot import MisskeyBot
-from .exceptions import ConfigurationError, APIConnectionError, AuthenticationError
+from .config import Config
 from .constants import ConfigKeys
+from .exceptions import APIConnectionError, AuthenticationError, ConfigurationError
 
 bot: Optional[MisskeyBot] = None
 tasks: List[asyncio.Task] = []

@@ -6,20 +6,19 @@ from typing import Dict, List, Optional
 
 import openai
 from loguru import logger
-
-from .interfaces import ITextGenerator
-from .utils import retry_async
-from .constants import API_MAX_RETRIES, API_TIMEOUT, REQUEST_TIMEOUT
-
 from openai import (
-    RateLimitError,
+    APIConnectionError,
     APIError,
+    APITimeoutError,
     AuthenticationError,
     BadRequestError,
-    APITimeoutError,
+    RateLimitError,
     Timeout,
-    APIConnectionError,
 )
+
+from .constants import API_MAX_RETRIES, API_TIMEOUT, REQUEST_TIMEOUT
+from .interfaces import ITextGenerator
+from .utils import retry_async
 
 __all__ = ("DeepSeekAPI",)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from loguru import logger
 

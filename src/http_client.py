@@ -1,7 +1,9 @@
 import sys
+from typing import Any, Optional
+
 import aiohttp
-from typing import Optional, Any
 from loguru import logger
+
 from .constants import API_TIMEOUT, WS_TIMEOUT
 from .exceptions import ClientConnectorError
 

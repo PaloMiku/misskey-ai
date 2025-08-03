@@ -2,17 +2,17 @@ import asyncio
 import json
 import uuid
 from enum import Enum
-from typing import Any, Dict, Optional, Callable, List, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import aiohttp
 import aiohttp.http
 from cachetools import LRUCache
 from loguru import logger
 
-from .exceptions import WebSocketConnectionError, WebSocketReconnectError
-from .interfaces import IStreamingClient
 from .constants import MAX_CACHE
+from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .http_client import HTTPSession
+from .interfaces import IStreamingClient
 
 __all__ = ("ChannelType", "StreamingClient")
 
