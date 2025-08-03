@@ -52,28 +52,64 @@ class APIYm:
                         "cnname": gamedata.get("chineseName", "None"),
                         "intro": gamedata.get("introduction", "None")
                     }
+                    return {
+                        "if_oainfo": False,
+                        "result": result
+                    }
                 elif code == 614:
                     raise Exception("参数错误，可能是根据关键词搜索不到游戏档案\n在使用游戏简称、汉化名、外号等关键字无法查询到目标内容时，请使用游戏原名（全名+标点+大小写无误）再次尝试，或者使用模糊查找")
                 else:
                     raise Exception(f"返回错误，返回码code:{code}")
-        return result
+
+    async def search_orgid_mergeinfo(self, header, gid: int, info: dict, if_oainfo: bool) -> Dict[str, Any]:
+        """搜索游戏机构详细信息，将oaid匹配成对应的会社名"""
+        url = f"{self.api}/open/archive?orgId={gid}"
+        async with aiohttp.ClientSession(headers=header) as session:
+            async with session.get(url) as response:
+                res = await response.json()
+                code = res["code"]
+                if code == 0:
+                    if if_oainfo:
+                        result_oa = {
+                            "oaname": res.get("data", {}).get("org", {}).get("name", None),
+                            "oacn": res.get("data", {}).get("org", {}).get("chineseName", None),
+                            "intro": res.get("data", {}).get("org", {}).get("introduction", None),
+                            "country": res.get("data", {}).get("org", {}).get("country", None)
+                        }
+                    else:
+                        oa = {
+                            "oaname": res.get("data", {}).get("org", {}).get("name", None),
+                            "oacn": res.get("data", {}).get("org", {}).get("chineseName", None)
+                        }
+                        result_oa = info | {"oaname": oa.get("oaname"), "oacn": oa.get("oacn")}
+                        if "oaid" in result_oa:
+                            del result_oa["oaid"]
+                    return result_oa
+                else:
+                    raise Exception(f"查询会社信息失败，返回码code:{code}")
+        return None
 
     async def vague_search_game(self, header, keyword: str, pageNum=1, pageSize=10) -> str:
         from urllib.parse import quote
         keyword = quote(keyword)
+        # 修复URL路径，确保正确的斜杠分隔符
         url = f"{self.api}/open/archive/search-game?mode=list&keyword={keyword}&pageNum={pageNum}&pageSize={pageSize}"
         async with aiohttp.ClientSession(headers=header) as session:
             async with session.get(url) as response:
                 res = await response.json()
                 code = res.get("code")
                 if code == 0:
-                    result = res.get("data", {}).get("result", {})
-                    if result:
+                    result = res.get("data", {}).get("result", [])
+                    if result and len(result) > 0:
                         s_keyword = result[0].get("name", None)
+                        if s_keyword:
+                            return s_keyword
+                        else:
+                            raise Exception("模糊搜索返回结果但游戏名为空")
                     else:
                         raise Exception("模糊搜索无结果，请尝试更改关键词")
                 else:
-                    raise Exception(f"返回错误，返回码code:{code}")
+                    raise Exception(f"模糊搜索返回错误，返回码code:{code}")
         return s_keyword
 
     def info_list(self, info: dict[str, Any]):
@@ -89,6 +125,7 @@ class APIYm:
         intro = "\n".join(pargs)
         chain = (
             f"游戏名：{info.get('name')}（{info.get('cnname')}）\n"
+            f"会社：{info.get('oaname', 'N/A')}（{info.get('oacn', 'N/A')}）\n"
             f"限制级：{'是' if info.get('rest') else '否'}\n"
             f"是否已有汉化：{'是' if info.get('hc') else '否'}\n"
             f"简介：\n{intro}"
@@ -137,7 +174,20 @@ class GalinfoPlugin(PluginBase):
                 header = await self.ym.header(token)
                 gal = await self.ym.vague_search_game(header, keyword)
                 info = await self.ym.search_game(header, gal, 100)
-                chains = self.ym.info_list(info)
+                
+                # 判断命中游戏信息中是否存在Oaid，如果存在则查询会社信息
+                if info.get("result", {}).get("oaid"):
+                    allinfo = await self.ym.search_orgid_mergeinfo(
+                        header,
+                        info.get("result").get("oaid"),
+                        info.get("result"),
+                        info.get("if_oainfo")
+                    )
+                else:
+                    allinfo = info.get("result", {})
+                    allinfo.update({"oaname": None, "oacn": None})
+                
+                chains = self.ym.info_list(allinfo)
                 
                 self._log_plugin_action("查询完成", f"找到游戏: {gal}")
                 
