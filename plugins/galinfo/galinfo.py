@@ -160,6 +160,11 @@ class GalinfoPlugin(PluginBase):
             
             if self.trigger_tag in text:
                 keyword = text.replace(self.trigger_tag, '').strip()
+                # 清理提及标记和其他特殊字符
+                import re
+                keyword = re.sub(r'@\w+', '', keyword).strip()  # 移除 @用户名
+                keyword = re.sub(r'\s+', ' ', keyword).strip()   # 规范化空格
+                
                 if not keyword:
                     return {
                         "handled": True,
