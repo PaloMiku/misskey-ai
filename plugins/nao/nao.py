@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
 import re
-import base64
 import aiohttp
 from typing import Dict, Any, Optional
 
@@ -40,70 +38,29 @@ class NaoImageSearchPlugin(PluginBase):
 
     async def on_mention(self, mention_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """处理 @mention 事件"""
-        try:
-            # 检查是否包含图片附件
-            images = self._extract_images_from_note(mention_data)
-            if not images:
-                return None
-
-            # 检查是否包含触发标签
-            if not self._has_trigger_tag(mention_data):
-                return None
-
-            # 检查是否有文本内容（除了 @mention 和标签），如果有文本则不处理
-            if self._has_text_content(mention_data, ignore_tag=True):
-                return None
-
-            # 只处理第一张图片
-            image_url = images[0]
-            
-            username = self._extract_username(mention_data)
-            self._log_plugin_action("处理图片识别请求", f"来自 @{username}")
-            
-            # 执行图片搜索
-            search_result = await self._search_image_by_url(image_url)
-            
-            if search_result:
-                return self._create_response(search_result)
-            else:
-                return self._create_response("没有找到相似的图片哦～")
-                
-        except Exception as e:
-            logger.error(f"NaoImageSearchPlugin 处理提及时出错: {e}")
-            return None
+        return await self._handle_image_search_event(mention_data, action_desc="处理图片识别请求")
 
     async def on_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """处理聊天消息事件"""
+        return await self._handle_image_search_event(message_data, action_desc="处理图片识别消息")
+
+    async def _handle_image_search_event(self, data: Dict[str, Any], action_desc: str) -> Optional[Dict[str, Any]]:
+        """统一处理图片识别事件"""
         try:
-            # 检查是否包含图片附件
-            images = self._extract_images_from_note(message_data)
+            images = self._extract_images_from_note(data)
             if not images:
                 return None
-
-            # 检查是否包含触发标签
-            if not self._has_trigger_tag(message_data):
+            if not self._has_trigger_tag(data):
                 return None
-
-            # 检查是否有文本内容（除了标签），如果有文本则不处理
-            if self._has_text_content(message_data, ignore_tag=True):
+            if self._has_text_content(data, ignore_tag=True):
                 return None
-
-            # 只处理第一张图片
             image_url = images[0]
-            
-            username = self._extract_username(message_data)
-            self._log_plugin_action("处理图片识别消息", f"来自 @{username}")
-            
-            # 执行图片搜索
+            username = self._extract_username(data)
+            self._log_plugin_action(action_desc, f"来自 @{username}")
             search_result = await self._search_image_by_url(image_url)
-            
-            if search_result:
-                return self._create_response(search_result)
-            else:
-                return self._create_response("没有找到相似的图片哦～")
-                
+            return self._create_response(search_result or "没有找到相似的图片哦～")
         except Exception as e:
-            logger.error(f"NaoImageSearchPlugin 处理消息时出错: {e}")
+            logger.error(f"NaoImageSearchPlugin 处理图片事件出错: {e}")
             return None
 
     def _extract_images_from_note(self, note_data: Dict[str, Any]) -> list:
