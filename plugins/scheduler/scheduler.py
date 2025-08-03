@@ -4,7 +4,9 @@
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
-from loguru import logger
+import logging
+
+logger = logging.getLogger("scheduler")
 
 from src.plugin_base import PluginBase
 
@@ -136,43 +138,26 @@ class SchedulerPlugin(PluginBase):
             if self.daily_enabled:
                 current_hour = current_time.hour
                 current_minute = current_time.minute
+                current_second = current_time.second
+                window_seconds = 60  # 容忍窗口，单位：秒
 
-                # 允许在目标分钟内的任意时刻触发，只要当天没发过
+                # 只允许在目标分钟的前window_seconds秒内发送
                 if (current_hour == self.daily_hour and
                     current_minute == self.daily_minute and
-                    self.last_daily_send_date != current_date):
-                    
+                    self.last_daily_send_date != current_date and
+                    current_second < window_seconds):
                     daily_message = self._get_random_message(self.daily_messages)
                     if daily_message:
-                        # 更新最后发送日期
                         self.last_daily_send_date = current_date
                         await self.persistence_manager.set_plugin_data(
                             self.name, "last_daily_send_date", current_date.isoformat()
                         )
-                        
                         self._log_plugin_action("每日消息", f"发送每日消息: {daily_message[:30]}...")
                         return {
                             "handled": True,
                             "plugin_name": self.name,
                             "content": daily_message
                         }
-                # 容错：如果插件被重启，错过了目标分钟，但当天还没发过，也允许补发
-                elif (current_date != self.last_daily_send_date and
-                      (current_hour > self.daily_hour or
-                       (current_hour == self.daily_hour and current_minute > self.daily_minute))):
-                    daily_message = self._get_random_message(self.daily_messages)
-                    if daily_message:
-                        self.last_daily_send_date = current_date
-                        await self.persistence_manager.set_plugin_data(
-                            self.name, "last_daily_send_date", current_date.isoformat()
-                        )
-                        self._log_plugin_action("每日消息(补发)", f"补发每日消息: {daily_message[:30]}...")
-                        return {
-                            "handled": True,
-                            "plugin_name": self.name,
-                            "content": daily_message
-                        }
-            
             return None
             
         except Exception as e:
@@ -249,6 +234,26 @@ class SchedulerPlugin(PluginBase):
         return random.choice(messages)
 
     async def on_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """处理消息（暂时禁用重连检测功能）"""
+        # 重连检测逻辑比较复杂，暂时禁用
+        # 可以在未来版本中改进重连检测机制
+        return None
+        
+        return special_holidays
+
+    def _get_random_message(self, messages: List[str]) -> Optional[str]:
+        """从消息列表中随机选择一条消息"""
+        if not messages:
+            return None
+        
+        import random
+        return random.choice(messages)
+
+    async def on_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """处理消息（暂时禁用重连检测功能）"""
+        # 重连检测逻辑比较复杂，暂时禁用
+        # 可以在未来版本中改进重连检测机制
+        return None
         """处理消息（暂时禁用重连检测功能）"""
         # 重连检测逻辑比较复杂，暂时禁用
         # 可以在未来版本中改进重连检测机制
