@@ -161,4 +161,6 @@ class DeepSeekAPI(ITextGenerator):
         max_tokens: int,
         temperature: float,
     ) -> str:
-        return await self.generate_text(original_text, system_prompt, max_tokens, temperature)
+        return await self.generate_text(
+            original_text, system_prompt, max_tokens, temperature
+        )
