@@ -63,6 +63,7 @@ class MisskeyBot:
         self.plugin_manager = PluginManager(config, persistence=self.persistence)
         self.state = BotState(self)
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
+        self.bot_user_id = None
         logger.info("机器人初始化完成")
 
     async def __aenter__(self):
