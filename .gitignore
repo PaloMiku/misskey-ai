@@ -50,3 +50,6 @@ data/
 
 # uv files
 uv.lock
+
+# sys files
+sys
