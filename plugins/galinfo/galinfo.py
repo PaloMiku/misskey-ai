@@ -253,13 +253,23 @@ class GalinfoPlugin(PluginBase):
             note = message_data.get("note", message_data)
             text = note.get("text", "")
             
+            # 新增：只有 #recreate 而未包含触发标签时，提示格式错误
+            if "#recreate" in text and self.trigger_tag not in text:
+                return {
+                    "handled": True,
+                    "plugin_name": self.name,
+                    "response": "格式错误：重建缓存需同时包含触发标签和#recreate"
+                }
+            
             # 仅检测自己的标签，且标签需为独立词（前后为分隔符或行首/行尾）
             import re
-            tag_pattern = r'(?<![^\s.,!?;:()\[\]{{}}\'"“”‘’<>《》|/\\~`·、，。！？；：（）【】]){}(?![^\s.,!?;:()\[\]{{}}\'"“”‘’<>《》|/\\~`·、，。！？；：（）【】])'.format(re.escape(self.trigger_tag))
+            tag_pattern = r'(?<![^\s.,!?;:()\[\]{{}}\'"“”‘’<>《》|/\\~`·、，。！？；：（）【】]){}(?![^\s.,!?;:()\[\]{{}}\'"“”‘’<>《》|/\\~`·、，。！？；：（）【】])'.format(
+                re.escape(self.trigger_tag)
+            )
             match = re.search(tag_pattern, text)
             if not match:
-                return None  # 没有自己的标签，直接不响应
-
+                return None  # 没有触发标签，且非单独 #recreate，不做响应
+            
             self._log_plugin_action("收到消息", f"原始文本: '{text}', 触发标签: '{self.trigger_tag}'")
             self._log_plugin_action("标签匹配", f"在文本中找到触发标签")
             
