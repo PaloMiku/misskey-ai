@@ -1,5 +1,7 @@
 import os
 import aiohttp
+import json
+import datetime
 from typing import Dict, Any, Optional
 from src.plugin_base import PluginBase
 
@@ -17,6 +19,7 @@ class APIYm:
             "grant_type": "client_credentials",
             "client_id": self.cid,
             "client_secret": self.c_secret,
+            
             "scope": "public"
         }
         async with aiohttp.ClientSession() as session:
@@ -170,6 +173,31 @@ class GalinfoPlugin(PluginBase):
         self.deepseek_api = self._get_deepseek_api()
         # AI系统提示词（支持自定义）
         self.ai_system_prompt = context.config.get('ai_system_prompt', self._get_default_prompt())
+        # 新增：缓存文件路径
+        self.cache_file = os.path.join(os.path.dirname(__file__), '.cache')
+
+    # 新增：载入缓存
+    def _load_cache(self) -> Dict[str, Any]:
+        try:
+            with open(self.cache_file, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+            cache = {}
+            for k, v in raw.items():
+                if isinstance(v, dict) and 'response' in v and 'timestamp' in v:
+                    cache[k] = v
+                else:
+                    cache[k] = {"response": v, "timestamp": None}
+            return cache
+        except Exception:
+            return {}
+
+    # 新增：保存缓存
+    def _save_cache(self, cache: Dict[str, Any]):
+        try:
+            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
     async def on_mention(self, mention_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """处理 @mention 事件"""
@@ -243,9 +271,14 @@ class GalinfoPlugin(PluginBase):
             keyword = re.sub(r'@\w+', '', keyword).strip()  # 移除 @用户名
             self._log_plugin_action("清理提及", f"移除@标记后: '{keyword}'")
             
-            keyword = re.sub(r'\s+', ' ', keyword).strip()   # 规范化空格
-            self._log_plugin_action("最终关键词", f"规范化后: '{keyword}'")
-            
+            keyword = re.sub(r'\s+', ' ', keyword).strip()
+            # 新增：检测 #recreate 标志
+            recreate = False
+            if '#recreate' in keyword:
+                recreate = True
+                keyword = re.sub(r'#recreate\b', '', keyword).strip()
+            self._log_plugin_action("重建缓存", f"recreate={recreate}")
+
             if not keyword:
                 self._log_plugin_action("关键词为空", "返回提示信息")
                 return {
@@ -257,57 +290,74 @@ class GalinfoPlugin(PluginBase):
             username = self._extract_username(message_data)
             self._log_plugin_action("开始查询", f"用户: {username}, 关键词: '{keyword}'")
             
-            try:
-                token = await self.ym.get_token()
-                self._log_plugin_action("获取Token", "成功获取API Token")
-                
-                header = await self.ym.header(token)
-                self._log_plugin_action("构建Header", "成功构建请求头")
-                
-                # 先进行模糊搜索获取游戏名
-                game_name = await self.ym.vague_search_game(header, keyword)
-                self._log_plugin_action("模糊搜索", f"找到最匹配游戏名: '{game_name}'")
-                
-                # 使用获取到的游戏名进行精确搜索
-                search_result = await self.ym.search_game(header, game_name, 70)  # similarity=70
-                self._log_plugin_action("精确搜索", f"获取游戏详细信息成功")
-                
-                result = search_result["result"]
-                self._log_plugin_action("游戏数据", f"游戏完整信息: name={result.get('name')}, cnname={result.get('cnname')}")
-                
-                # 判断命中游戏信息中是否存在Oaid，如果存在则查询会社信息
-                if result.get("oaid"):
-                    self._log_plugin_action("查询会社", f"OAID: {result.get('oaid')}")
-                    allinfo = await self.ym.search_orgid_mergeinfo(
-                        header,
-                        result.get("oaid"),
-                        result,
-                        False
-                    )
-                else:
-                    self._log_plugin_action("无会社信息", "游戏没有OAID，跳过会社查询")
-                    allinfo = result.copy()
-                    allinfo.update({"oaname": None, "oacn": None})
-                
-                chains = self.ym.info_list(allinfo)
-                self._log_plugin_action("格式化信息", f"生成回复内容，长度: {len(chains)}")
-                
-                # 使用 AI 增强处理（如果启用）
-                if self.use_ai_enhancement:
-                    chains = await self._enhance_with_ai(chains, game_name)
-                    self._log_plugin_action("AI增强", f"AI增强完成，最终内容长度: {len(chains)}")
-                
-                self._log_plugin_action("查询完成", f"找到游戏: {game_name}")
-                
-                ai_status = " (AI增强)" if self.use_ai_enhancement else ""
+            # 获取Token/headers
+            token = await self.ym.get_token()
+            header = await self.ym.header(token)
+            # 模糊搜索游戏名
+            game_name = await self.ym.vague_search_game(header, keyword)
+            self._log_plugin_action("模糊搜索", f"找到最匹配游戏名: '{game_name}'")
+
+            # 新增：检查缓存
+            cache = self._load_cache()
+            cache_key = f"{game_name}{'_AI' if self.use_ai_enhancement else ''}"
+            if cache_key in cache and not recreate:
+                entry = cache[cache_key]
+                ts = entry.get("timestamp") or "未知"
+                # 命中缓存时标明这是缓存数据并显示时间
+                resp = f"【缓存数据】\n{entry['response']}\n\n缓存时间：{ts}"
+                self._log_plugin_action("缓存命中", f"使用缓存回复游戏 '{game_name}'，时间：{ts}")
                 return {
                     "handled": True,
                     "plugin_name": self.name,
-                    "response": f"已匹配最符合的一条：{game_name}{ai_status}\n{chains}"
+                    "response": resp
                 }
-            except Exception as api_error:
-                self._log_plugin_action("API调用失败", f"错误: {str(api_error)}")
-                raise api_error
+
+            # 使用获取到的游戏名进行精确搜索
+            search_result = await self.ym.search_game(header, game_name, 70)  # similarity=70
+            self._log_plugin_action("精确搜索", f"获取游戏详细信息成功")
+            
+            result = search_result["result"]
+            self._log_plugin_action("游戏数据", f"游戏完整信息: name={result.get('name')}, cnname={result.get('cnname')}")
+            
+            # 判断命中游戏信息中是否存在Oaid，如果存在则查询会社信息
+            if result.get("oaid"):
+                self._log_plugin_action("查询会社", f"OAID: {result.get('oaid')}")
+                allinfo = await self.ym.search_orgid_mergeinfo(
+                    header,
+                    result.get("oaid"),
+                    result,
+                    False
+                )
+            else:
+                self._log_plugin_action("无会社信息", "游戏没有OAID，跳过会社查询")
+                allinfo = result.copy()
+                allinfo.update({"oaname": None, "oacn": None})
+            
+            chains = self.ym.info_list(allinfo)
+            self._log_plugin_action("格式化信息", f"生成回复内容，长度: {len(chains)}")
+            
+            # 使用 AI 增强处理（如果启用）
+            if self.use_ai_enhancement:
+                chains = await self._enhance_with_ai(chains, game_name)
+                self._log_plugin_action("AI增强", f"AI增强完成，最终内容长度: {len(chains)}")
+            
+            self._log_plugin_action("查询完成", f"找到游戏: {game_name}")
+            
+            ai_status = " (AI增强)" if self.use_ai_enhancement else ""
+            response_text = f"已匹配最符合的一条：{game_name}{ai_status}\n{chains}"
+
+            # 保存新缓存并记录时间
+            cache[cache_key] = {
+                "response": response_text,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            self._save_cache(cache)
+
+            return {
+                "handled": True,
+                "plugin_name": self.name,
+                "response": response_text
+            }
         except Exception as e:
             self._log_plugin_action("查询失败", str(e))
             return {
