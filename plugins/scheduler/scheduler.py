@@ -62,22 +62,36 @@ class SchedulerPlugin(PluginBase):
         """机器人启动时的处理"""
         if not self.startup_enabled or not self.startup_messages:
             return
-        
+
         try:
             # 记录启动时间
             current_time = datetime.now(timezone.utc)
+            # 检查上一次启动时间，若5分钟内则不发送
+            last_startup_str = await self.persistence_manager.get_plugin_data(
+                self.name, "last_startup_time"
+            )
+            if last_startup_str:
+                try:
+                    last_startup_time = datetime.fromisoformat(last_startup_str)
+                    delta = (current_time - last_startup_time).total_seconds()
+                    if delta < 300:  # 5分钟=300秒
+                        self._log_plugin_action("启动处理", "距离上次启动不足5分钟，不发送启动消息")
+                        return
+                except Exception as e:
+                    logger.warning(f"解析 last_startup_time 失败: {e}")
+
             self.last_startup_time = current_time
             await self.persistence_manager.set_plugin_data(
                 self.name, "last_startup_time", current_time.isoformat()
             )
-            
+
             # 标记有启动消息需要发送
             await self.persistence_manager.set_plugin_data(
                 self.name, "should_send_startup", "true"
             )
-            
+
             self._log_plugin_action("启动处理", "已标记启动消息待发送")
-                
+
         except Exception as e:
             logger.error(f"Scheduler 插件处理启动事件失败: {e}")
 
