@@ -183,13 +183,15 @@ class GalinfoPlugin(PluginBase):
         """获取默认的AI系统提示词"""
         return """你是一个专业的Galgame(美少女游戏)评论专家。请根据用户提供的游戏基本信息，用更生动、有趣的语言重新整理和润色内容，让介绍更加吸引人。
 
-要求：
-1. 保持所有事实信息准确，不要编造内容
-2. 简介部分可以用更生动的语言重新表述，突出游戏的特色和亮点
-3. 保持原有格式结构，只润色文字内容
-4. 语言要生动有趣但不过于夸张
-5. 如果游戏有中文版，可以适当提及对中文玩家的友好性
-6. 总长度控制在400字以内"""
+  要求：
+  1. 保持所有事实信息准确，不要编造内容
+  2. 简介部分可以用更生动的语言重新表述，突出游戏的特色和亮点
+  3. 保持原有格式结构，只润色简介内容，其他内容不要改变
+  4. 语言要生动有趣但不过于夸张
+  5. 如果游戏有中文版，可以适当提及对中文玩家的友好性
+  6. 总长度控制在400字以内
+  7. 由于 Misskey 不支持列表语法，会导致解析器出错，因此禁止使用。列举时请使用「・」。
+"""
 
     async def _enhance_with_ai(self, game_info: str, game_name: str) -> str:
         """使用 AI 对游戏信息进行增强处理"""
@@ -223,88 +225,89 @@ class GalinfoPlugin(PluginBase):
             note = message_data.get("note", message_data)
             text = note.get("text", "")
             
+            # 仅检测自己的标签，且标签需为独立词（前后为分隔符或行首/行尾）
+            import re
+            tag_pattern = r'(?<![^\s.,!?;:()\[\]{{}}\'"“”‘’<>《》|/\\~`·、，。！？；：（）【】]){}(?![^\s.,!?;:()\[\]{{}}\'"“”‘’<>《》|/\\~`·、，。！？；：（）【】])'.format(re.escape(self.trigger_tag))
+            match = re.search(tag_pattern, text)
+            if not match:
+                return None  # 没有自己的标签，直接不响应
+
             self._log_plugin_action("收到消息", f"原始文本: '{text}', 触发标签: '{self.trigger_tag}'")
+            self._log_plugin_action("标签匹配", f"在文本中找到触发标签")
             
-            if self.trigger_tag in text:
-                self._log_plugin_action("标签匹配", f"在文本中找到触发标签")
+            # 只移除首次出现的标签
+            keyword = re.sub(tag_pattern, '', text, count=1).strip()
+            self._log_plugin_action("初步提取", f"移除标签后: '{keyword}'")
+            
+            # 清理提及标记和其他特殊字符
+            keyword = re.sub(r'@\w+', '', keyword).strip()  # 移除 @用户名
+            self._log_plugin_action("清理提及", f"移除@标记后: '{keyword}'")
+            
+            keyword = re.sub(r'\s+', ' ', keyword).strip()   # 规范化空格
+            self._log_plugin_action("最终关键词", f"规范化后: '{keyword}'")
+            
+            if not keyword:
+                self._log_plugin_action("关键词为空", "返回提示信息")
+                return {
+                    "handled": True,
+                    "plugin_name": self.name,
+                    "response": "请在标签后输入要查询的游戏名"
+                }
+            
+            username = self._extract_username(message_data)
+            self._log_plugin_action("开始查询", f"用户: {username}, 关键词: '{keyword}'")
+            
+            try:
+                token = await self.ym.get_token()
+                self._log_plugin_action("获取Token", "成功获取API Token")
                 
-                keyword = text.replace(self.trigger_tag, '').strip()
-                self._log_plugin_action("初步提取", f"移除标签后: '{keyword}'")
+                header = await self.ym.header(token)
+                self._log_plugin_action("构建Header", "成功构建请求头")
                 
-                # 清理提及标记和其他特殊字符
-                import re
-                keyword = re.sub(r'@\w+', '', keyword).strip()  # 移除 @用户名
-                self._log_plugin_action("清理提及", f"移除@标记后: '{keyword}'")
+                # 先进行模糊搜索获取游戏名
+                game_name = await self.ym.vague_search_game(header, keyword)
+                self._log_plugin_action("模糊搜索", f"找到最匹配游戏名: '{game_name}'")
                 
-                keyword = re.sub(r'\s+', ' ', keyword).strip()   # 规范化空格
-                self._log_plugin_action("最终关键词", f"规范化后: '{keyword}'")
+                # 使用获取到的游戏名进行精确搜索
+                search_result = await self.ym.search_game(header, game_name, 70)  # similarity=70
+                self._log_plugin_action("精确搜索", f"获取游戏详细信息成功")
                 
-                if not keyword:
-                    self._log_plugin_action("关键词为空", "返回提示信息")
-                    return {
-                        "handled": True,
-                        "plugin_name": self.name,
-                        "response": "请在标签后输入要查询的游戏名"
-                    }
+                result = search_result["result"]
+                self._log_plugin_action("游戏数据", f"游戏完整信息: name={result.get('name')}, cnname={result.get('cnname')}")
                 
-                username = self._extract_username(message_data)
-                self._log_plugin_action("开始查询", f"用户: {username}, 关键词: '{keyword}'")
+                # 判断命中游戏信息中是否存在Oaid，如果存在则查询会社信息
+                if result.get("oaid"):
+                    self._log_plugin_action("查询会社", f"OAID: {result.get('oaid')}")
+                    allinfo = await self.ym.search_orgid_mergeinfo(
+                        header,
+                        result.get("oaid"),
+                        result,
+                        False
+                    )
+                else:
+                    self._log_plugin_action("无会社信息", "游戏没有OAID，跳过会社查询")
+                    allinfo = result.copy()
+                    allinfo.update({"oaname": None, "oacn": None})
                 
-                try:
-                    token = await self.ym.get_token()
-                    self._log_plugin_action("获取Token", "成功获取API Token")
-                    
-                    header = await self.ym.header(token)
-                    self._log_plugin_action("构建Header", "成功构建请求头")
-                    
-                    # 先进行模糊搜索获取游戏名
-                    game_name = await self.ym.vague_search_game(header, keyword)
-                    self._log_plugin_action("模糊搜索", f"找到最匹配游戏名: '{game_name}'")
-                    
-                    # 使用获取到的游戏名进行精确搜索
-                    search_result = await self.ym.search_game(header, game_name, 70)  # similarity=70
-                    self._log_plugin_action("精确搜索", f"获取游戏详细信息成功")
-                    
-                    result = search_result["result"]
-                    self._log_plugin_action("游戏数据", f"游戏完整信息: name={result.get('name')}, cnname={result.get('cnname')}")
-                    
-                    # 判断命中游戏信息中是否存在Oaid，如果存在则查询会社信息
-                    if result.get("oaid"):
-                        self._log_plugin_action("查询会社", f"OAID: {result.get('oaid')}")
-                        allinfo = await self.ym.search_orgid_mergeinfo(
-                            header,
-                            result.get("oaid"),
-                            result,
-                            False
-                        )
-                    else:
-                        self._log_plugin_action("无会社信息", "游戏没有OAID，跳过会社查询")
-                        allinfo = result.copy()
-                        allinfo.update({"oaname": None, "oacn": None})
-                    
-                    chains = self.ym.info_list(allinfo)
-                    self._log_plugin_action("格式化信息", f"生成回复内容，长度: {len(chains)}")
-                    
-                    # 使用 AI 增强处理（如果启用）
-                    if self.use_ai_enhancement:
-                        chains = await self._enhance_with_ai(chains, game_name)
-                        self._log_plugin_action("AI增强", f"AI增强完成，最终内容长度: {len(chains)}")
-                    
-                    self._log_plugin_action("查询完成", f"找到游戏: {game_name}")
-                    
-                    ai_status = " (AI增强)" if self.use_ai_enhancement else ""
-                    return {
-                        "handled": True,
-                        "plugin_name": self.name,
-                        "response": f"已匹配最符合的一条：{game_name}{ai_status}\n{chains}"
-                    }
-                except Exception as api_error:
-                    self._log_plugin_action("API调用失败", f"错误: {str(api_error)}")
-                    raise api_error
-            else:
-                self._log_plugin_action("标签不匹配", f"文本中未找到触发标签 '{self.trigger_tag}'")
-                return None
+                chains = self.ym.info_list(allinfo)
+                self._log_plugin_action("格式化信息", f"生成回复内容，长度: {len(chains)}")
                 
+                # 使用 AI 增强处理（如果启用）
+                if self.use_ai_enhancement:
+                    chains = await self._enhance_with_ai(chains, game_name)
+                    self._log_plugin_action("AI增强", f"AI增强完成，最终内容长度: {len(chains)}")
+                
+                self._log_plugin_action("查询完成", f"找到游戏: {game_name}")
+                
+                ai_status = " (AI增强)" if self.use_ai_enhancement else ""
+                return {
+                    "handled": True,
+                    "plugin_name": self.name,
+                    "response": f"已匹配最符合的一条：{game_name}{ai_status}\n{chains}"
+                }
+            except Exception as api_error:
+                self._log_plugin_action("API调用失败", f"错误: {str(api_error)}")
+                raise api_error
         except Exception as e:
             self._log_plugin_action("查询失败", str(e))
             return {
