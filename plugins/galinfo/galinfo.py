@@ -90,9 +90,9 @@ class APIYm:
         return None
 
     async def vague_search_game(self, header, keyword: str, pageNum=1, pageSize=10) -> str:
+        """模糊查询游戏名（即可能游戏列表查询，默认命中所请求到列表中的第一个）"""
         from urllib.parse import quote
         keyword = quote(keyword)
-        # 修复URL路径，确保正确的斜杠分隔符
         url = f"{self.api}/open/archive/search-game?mode=list&keyword={keyword}&pageNum={pageNum}&pageSize={pageSize}"
         async with aiohttp.ClientSession(headers=header) as session:
             async with session.get(url) as response:
@@ -101,7 +101,29 @@ class APIYm:
                 if code == 0:
                     result = res.get("data", {}).get("result", [])
                     if result and len(result) > 0:
-                        s_keyword = result[0].get("name", None)
+                        # 查找最匹配的游戏，优先精确匹配或包含关键词的游戏
+                        original_keyword = keyword.replace('%20', ' ').lower()  # URL解码并转小写
+                        best_match = None
+                        exact_match = None
+                        
+                        for game in result:
+                            game_name = game.get("name", "").lower()
+                            cn_name = game.get("chineseName", "").lower()
+                            
+                            # 精确匹配优先
+                            if game_name == original_keyword or cn_name == original_keyword:
+                                exact_match = game
+                                break
+                            # 包含关键词的匹配
+                            elif original_keyword in game_name or original_keyword in cn_name:
+                                if not best_match:
+                                    best_match = game
+                        
+                        # 选择最佳匹配
+                        selected_game = exact_match or best_match or result[0]
+                        
+                        # 只返回游戏名字，用于后续精确搜索
+                        s_keyword = selected_game.get("name", None)
                         if s_keyword:
                             return s_keyword
                         else:
@@ -110,7 +132,7 @@ class APIYm:
                         raise Exception("模糊搜索无结果，请尝试更改关键词")
                 else:
                     raise Exception(f"模糊搜索返回错误，返回码code:{code}")
-        return s_keyword
+        return None
 
     def info_list(self, info: dict[str, Any]):
         import re
@@ -192,35 +214,40 @@ class GalinfoPlugin(PluginBase):
                     header = await self.ym.header(token)
                     self._log_plugin_action("构建Header", "成功构建请求头")
                     
-                    gal = await self.ym.vague_search_game(header, keyword)
-                    self._log_plugin_action("模糊搜索", f"找到游戏: '{gal}'")
+                    # 先进行模糊搜索获取游戏名
+                    game_name = await self.ym.vague_search_game(header, keyword)
+                    self._log_plugin_action("模糊搜索", f"找到最匹配游戏名: '{game_name}'")
                     
-                    info = await self.ym.search_game(header, gal, 100)
-                    self._log_plugin_action("精确搜索", f"获取游戏详情成功")
+                    # 使用获取到的游戏名进行精确搜索
+                    search_result = await self.ym.search_game(header, game_name, 70)  # similarity=70
+                    self._log_plugin_action("精确搜索", f"获取游戏详细信息成功")
+                    
+                    result = search_result["result"]
+                    self._log_plugin_action("游戏数据", f"游戏完整信息: name={result.get('name')}, cnname={result.get('cnname')}")
                     
                     # 判断命中游戏信息中是否存在Oaid，如果存在则查询会社信息
-                    if info.get("result", {}).get("oaid"):
-                        self._log_plugin_action("查询会社", f"OAID: {info.get('result', {}).get('oaid')}")
+                    if result.get("oaid"):
+                        self._log_plugin_action("查询会社", f"OAID: {result.get('oaid')}")
                         allinfo = await self.ym.search_orgid_mergeinfo(
                             header,
-                            info.get("result").get("oaid"),
-                            info.get("result"),
-                            info.get("if_oainfo")
+                            result.get("oaid"),
+                            result,
+                            False
                         )
                     else:
                         self._log_plugin_action("无会社信息", "游戏没有OAID，跳过会社查询")
-                        allinfo = info.get("result", {})
+                        allinfo = result.copy()
                         allinfo.update({"oaname": None, "oacn": None})
                     
                     chains = self.ym.info_list(allinfo)
                     self._log_plugin_action("格式化信息", f"生成回复内容，长度: {len(chains)}")
                     
-                    self._log_plugin_action("查询完成", f"找到游戏: {gal}")
+                    self._log_plugin_action("查询完成", f"找到游戏: {game_name}")
                     
                     return {
                         "handled": True,
                         "plugin_name": self.name,
-                        "response": f"已匹配最符合的一条：{gal}\n{chains}"
+                        "response": f"已匹配最符合的一条：{game_name}\n{chains}"
                     }
                 except Exception as api_error:
                     self._log_plugin_action("API调用失败", f"错误: {str(api_error)}")
