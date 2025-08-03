@@ -18,6 +18,7 @@ class NaoImageSearchPlugin(PluginBase):
     def __init__(self, context):
         super().__init__(context)
         self.api_key = self.config.get("api_key")
+        self.trigger_tag = self.config.get("trigger_tag", "#nao")  # 新增：可自定义触发标签
         self.session = None
         self.saucenao_api_url = "https://saucenao.com/search.php"
 
@@ -45,8 +46,12 @@ class NaoImageSearchPlugin(PluginBase):
             if not images:
                 return None
 
-            # 检查是否有文本内容（除了 @mention），如果有文本则不处理
-            if self._has_text_content(mention_data):
+            # 检查是否包含触发标签
+            if not self._has_trigger_tag(mention_data):
+                return None
+
+            # 检查是否有文本内容（除了 @mention 和标签），如果有文本则不处理
+            if self._has_text_content(mention_data, ignore_tag=True):
                 return None
 
             # 只处理第一张图片
@@ -75,8 +80,12 @@ class NaoImageSearchPlugin(PluginBase):
             if not images:
                 return None
 
-            # 检查是否有文本内容，如果有文本则不处理
-            if self._has_text_content(message_data):
+            # 检查是否包含触发标签
+            if not self._has_trigger_tag(message_data):
+                return None
+
+            # 检查是否有文本内容（除了标签），如果有文本则不处理
+            if self._has_text_content(message_data, ignore_tag=True):
                 return None
 
             # 只处理第一张图片
@@ -128,29 +137,29 @@ class NaoImageSearchPlugin(PluginBase):
         
         return images
 
-    def _has_text_content(self, note_data: Dict[str, Any]) -> bool:
-        """检查帖子是否包含文本内容（排除 @mention）"""
+    def _has_trigger_tag(self, note_data: Dict[str, Any]) -> bool:
+        """检查文本是否包含触发标签"""
+        note = note_data.get("note", note_data)
+        text = note.get("text", "") or ""
+        return self.trigger_tag in text
+
+    def _has_text_content(self, note_data: Dict[str, Any], ignore_tag: bool = False) -> bool:
+        """检查帖子是否包含文本内容（排除 @mention 和可选的标签）"""
         try:
-            # 尝试多种可能的数据结构
             note = note_data.get("note", note_data)
-            
-            # 获取帖子文本内容
             text = note.get("text", "") or ""
             if not text:
                 return False
-            
+
             # 移除所有 @mention 标记
-            # Misskey 的 mention 格式通常是 @username 或 @username@domain
             text_without_mentions = re.sub(r'@\w+(?:@[\w.-]+)?', '', text)
-            
-            # 移除空白字符并检查是否还有内容
+            # 可选：移除触发标签
+            if ignore_tag and self.trigger_tag:
+                text_without_mentions = text_without_mentions.replace(self.trigger_tag, "")
             cleaned_text = text_without_mentions.strip()
-            
             return len(cleaned_text) > 0
-            
         except Exception as e:
             logger.error(f"检查文本内容时出错: {e}")
-            # 出错时保守处理，认为有文本内容
             return True
 
     async def _search_image_by_url(self, image_url: str) -> Optional[str]:
