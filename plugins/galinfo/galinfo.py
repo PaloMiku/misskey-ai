@@ -158,14 +158,24 @@ class GalinfoPlugin(PluginBase):
             note = message_data.get("note", message_data)
             text = note.get("text", "")
             
+            self._log_plugin_action("收到消息", f"原始文本: '{text}', 触发标签: '{self.trigger_tag}'")
+            
             if self.trigger_tag in text:
+                self._log_plugin_action("标签匹配", f"在文本中找到触发标签")
+                
                 keyword = text.replace(self.trigger_tag, '').strip()
+                self._log_plugin_action("初步提取", f"移除标签后: '{keyword}'")
+                
                 # 清理提及标记和其他特殊字符
                 import re
                 keyword = re.sub(r'@\w+', '', keyword).strip()  # 移除 @用户名
+                self._log_plugin_action("清理提及", f"移除@标记后: '{keyword}'")
+                
                 keyword = re.sub(r'\s+', ' ', keyword).strip()   # 规范化空格
+                self._log_plugin_action("最终关键词", f"规范化后: '{keyword}'")
                 
                 if not keyword:
+                    self._log_plugin_action("关键词为空", "返回提示信息")
                     return {
                         "handled": True,
                         "plugin_name": self.name,
@@ -173,34 +183,52 @@ class GalinfoPlugin(PluginBase):
                     }
                 
                 username = self._extract_username(message_data)
-                self._log_plugin_action("开始查询", f"用户: {username}, 关键词: {keyword}")
+                self._log_plugin_action("开始查询", f"用户: {username}, 关键词: '{keyword}'")
                 
-                token = await self.ym.get_token()
-                header = await self.ym.header(token)
-                gal = await self.ym.vague_search_game(header, keyword)
-                info = await self.ym.search_game(header, gal, 100)
+                try:
+                    token = await self.ym.get_token()
+                    self._log_plugin_action("获取Token", "成功获取API Token")
+                    
+                    header = await self.ym.header(token)
+                    self._log_plugin_action("构建Header", "成功构建请求头")
+                    
+                    gal = await self.ym.vague_search_game(header, keyword)
+                    self._log_plugin_action("模糊搜索", f"找到游戏: '{gal}'")
+                    
+                    info = await self.ym.search_game(header, gal, 100)
+                    self._log_plugin_action("精确搜索", f"获取游戏详情成功")
+                    
+                    # 判断命中游戏信息中是否存在Oaid，如果存在则查询会社信息
+                    if info.get("result", {}).get("oaid"):
+                        self._log_plugin_action("查询会社", f"OAID: {info.get('result', {}).get('oaid')}")
+                        allinfo = await self.ym.search_orgid_mergeinfo(
+                            header,
+                            info.get("result").get("oaid"),
+                            info.get("result"),
+                            info.get("if_oainfo")
+                        )
+                    else:
+                        self._log_plugin_action("无会社信息", "游戏没有OAID，跳过会社查询")
+                        allinfo = info.get("result", {})
+                        allinfo.update({"oaname": None, "oacn": None})
+                    
+                    chains = self.ym.info_list(allinfo)
+                    self._log_plugin_action("格式化信息", f"生成回复内容，长度: {len(chains)}")
+                    
+                    self._log_plugin_action("查询完成", f"找到游戏: {gal}")
+                    
+                    return {
+                        "handled": True,
+                        "plugin_name": self.name,
+                        "response": f"已匹配最符合的一条：{gal}\n{chains}"
+                    }
+                except Exception as api_error:
+                    self._log_plugin_action("API调用失败", f"错误: {str(api_error)}")
+                    raise api_error
+            else:
+                self._log_plugin_action("标签不匹配", f"文本中未找到触发标签 '{self.trigger_tag}'")
+                return None
                 
-                # 判断命中游戏信息中是否存在Oaid，如果存在则查询会社信息
-                if info.get("result", {}).get("oaid"):
-                    allinfo = await self.ym.search_orgid_mergeinfo(
-                        header,
-                        info.get("result").get("oaid"),
-                        info.get("result"),
-                        info.get("if_oainfo")
-                    )
-                else:
-                    allinfo = info.get("result", {})
-                    allinfo.update({"oaname": None, "oacn": None})
-                
-                chains = self.ym.info_list(allinfo)
-                
-                self._log_plugin_action("查询完成", f"找到游戏: {gal}")
-                
-                return {
-                    "handled": True,
-                    "plugin_name": self.name,
-                    "response": f"已匹配最符合的一条：{gal}\n{chains}"
-                }
         except Exception as e:
             self._log_plugin_action("查询失败", str(e))
             return {
