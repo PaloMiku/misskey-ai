@@ -19,8 +19,6 @@ class StatusPlugin(PluginBase):
         super().__init__(context)
         # 配置参数
         self.enabled = self.config.get("enabled", True)
-        # 移除自动发布相关配置
-        # self.auto_post_enabled = self.config.get("auto_post_enabled", True)
         self.manual_trigger_enabled = self.config.get("manual_trigger_enabled", True)
         
         # 发布时间配置（仅用于定时清理）
@@ -29,10 +27,10 @@ class StatusPlugin(PluginBase):
         
         # 标签配置
         self.status_tag = self.config.get("status_tag", "#status")
-        self.auto_tag = self.config.get("auto_tag", "#dailystatus")
+        # self.auto_tag = self.config.get("auto_tag", "#dailystatus")  # 移除自动标签
         
         # 允许触发的用户名列表
-        self.allowed_users = set(self.config.get("allowed_users", []))  # 新增配置
+        self.allowed_users = set(self.config.get("allowed_users", []))
         
         # 消息模板
         self.message_template = self.config.get("message_template", 
@@ -41,12 +39,12 @@ class StatusPlugin(PluginBase):
             "📈 在线率：{online_percentage:.1f}%\n"
             "🔄 重连次数：{reconnection_count}次\n"
             "⏱️ 最长连续在线：{max_continuous_hours}小时{max_continuous_minutes}分钟\n\n"
-            "日期：{date} {auto_tag}")
+            "日期：{date}")
         
         # 内部状态
         self.session_start_time = None
         self.daily_online_time = timedelta()  # 当日累计在线时间
-        self.last_post_date = None  # 上次发布日期
+        # self.last_post_date = None  # 移除自动发布相关
         self.daily_reconnections = 0  # 当日重连次数
         self.current_session_start = None  # 当前会话开始时间
         self.max_continuous_time = timedelta()  # 最长连续在线时间
@@ -371,8 +369,7 @@ class StatusPlugin(PluginBase):
                     reconnection_count=reconnection_count,
                     max_continuous_hours=max_continuous_hours,
                     max_continuous_minutes=max_continuous_minutes,
-                    date=formatted_date,
-                    auto_tag=self.auto_tag
+                    date=formatted_date
                 )
                 
                 return report
@@ -464,7 +461,6 @@ class StatusPlugin(PluginBase):
         """获取插件信息"""
         info = super().get_info()
         info.update({
-            # "auto_post_enabled": self.auto_post_enabled,  # 移除自动发布
             "manual_trigger_enabled": self.manual_trigger_enabled,
             "status_tag": self.status_tag,
             "post_time": f"{self.post_hour:02d}:{self.post_minute:02d}",
