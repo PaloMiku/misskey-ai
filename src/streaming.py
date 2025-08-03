@@ -60,19 +60,26 @@ class StreamingClient(IStreamingClient):
         self, channels: Optional[list[str]] = None, *, reconnect: bool = True
     ) -> None:
         self.should_reconnect = reconnect
+        retry_delay = 30  # 初始重连间隔（秒）
+        max_delay = 300   # 最大重连间隔（秒）
         while True:
             try:
                 await self._connect_once(channels)
                 await self._listen_messages()
+                # 如果正常退出监听，重置重连间隔
+                retry_delay = 30
             except WebSocketReconnectError:
                 if not self.should_reconnect:
                     break
-                logger.debug("空闲连接被关闭，重新连接...")
-                await asyncio.sleep(3)
+                logger.debug(f"空闲连接被关闭，{retry_delay}秒后尝试重新连接...")
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay + 30, max_delay)
             except WebSocketConnectionError:
                 if not self.should_reconnect:
                     break
-                await asyncio.sleep(3)
+                logger.debug(f"WebSocket 连接失败，{retry_delay}秒后尝试重新连接...")
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay + 30, max_delay)
 
     async def disconnect(self) -> None:
         self.should_reconnect = False
