@@ -99,7 +99,6 @@ class MisskeyAPI(IAPIClient):
             logger.error(f"HTTP 请求错误: {e}")
             raise APIConnectionError() from e
 
-    # RESERVED
     async def request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:

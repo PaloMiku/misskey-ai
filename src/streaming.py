@@ -62,8 +62,8 @@ class StreamingClient(IStreamingClient):
         self.should_reconnect = reconnect
         while True:
             try:
-                await self._connect_once(channels)
-                await self._listen_messages()
+                await self.connect_once(channels)
+                await self.listen_messages()
             except WebSocketReconnectError:
                 if not self.should_reconnect:
                     break
@@ -130,7 +130,7 @@ class StreamingClient(IStreamingClient):
             del self.channels[channel_id]
         logger.debug(f"已断开频道连接: {channel_type.value}")
 
-    async def _connect_once(self, channels: Optional[list[str]] = None) -> None:
+    async def connect_once(self, channels: List[str] = None) -> None:
         if self.running:
             return
         self.running = True
@@ -167,7 +167,7 @@ class StreamingClient(IStreamingClient):
             logger.debug("WebSocket 连接错误详情", exc_info=True)
             raise WebSocketConnectionError()
 
-    async def _listen_messages(self) -> None:
+    async def listen_messages(self) -> None:
         while self.running and self._ws_available:
             try:
                 msg = await self.ws_connection.receive()
