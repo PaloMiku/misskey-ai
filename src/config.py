@@ -34,7 +34,7 @@ class Config(IConfigProvider):
         except yaml.YAMLError as e:
             logger.error(f"YAML 配置文件解析错误: {e}")
             raise ConfigurationError() from e
-        except (OSError, PermissionError) as e:
+        except OSError as e:
             logger.error(f"配置文件读取错误: {e}")
             raise ConfigurationError() from e
         except (ValueError, TypeError, AttributeError) as e:
@@ -179,6 +179,6 @@ class Config(IConfigProvider):
             if path:
                 try:
                     Path(path).parent.mkdir(parents=True, exist_ok=True)
-                except (OSError, PermissionError) as e:
+                except OSError as e:
                     logger.error(f"创建{desc}失败 {path}: {e}")
                     raise ConfigurationError(f"无法创建{desc}: {path}") from e

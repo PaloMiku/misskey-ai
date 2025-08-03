@@ -23,12 +23,10 @@ if __name__ == "__main__":
         print("\n机器人已停止")
     except (
         OSError,
-        IOError,
         ValueError,
         TypeError,
         KeyError,
         RuntimeError,
         ImportError,
-        ModuleNotFoundError,
     ) as e:
         asyncio.run(handle_shutdown(f"启动时出错: {e}"))

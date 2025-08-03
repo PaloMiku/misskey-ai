@@ -81,7 +81,7 @@ class TopicsPlugin(PluginBase):
                 self._use_default_topics()
                 return
             logger.debug(f"成功加载 {len(self.topics)} 个主题关键词")
-        except (OSError, IOError, UnicodeDecodeError) as e:
+        except (OSError, UnicodeDecodeError) as e:
             logger.warning(f"加载主题文件失败: {e}")
             self._use_default_topics()
 

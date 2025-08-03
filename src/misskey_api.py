@@ -1,4 +1,3 @@
-import asyncio
 import json
 from typing import Any, Dict, List, Optional
 
@@ -92,8 +91,6 @@ class MisskeyAPI(IAPIClient):
                 return await self._process_response(response, endpoint)
         except (
             aiohttp.ClientError,
-            asyncio.TimeoutError,
-            OSError,
             json.JSONDecodeError,
         ) as e:
             logger.error(f"HTTP 请求错误: {e}")
