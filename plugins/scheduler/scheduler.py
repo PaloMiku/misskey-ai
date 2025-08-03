@@ -12,7 +12,7 @@ from src.plugin_base import PluginBase
 
 
 class SchedulerPlugin(PluginBase):
-    description = "定时调度插件，支持每日发送、节日发送以及机器人启动和重连时发送预设内容"
+    description = "定时调度插件，支持每日发送、节日发送以及机器人启动时发送预设内容"
 
     def __init__(self, context):
         super().__init__(context)
@@ -21,7 +21,6 @@ class SchedulerPlugin(PluginBase):
         self.daily_enabled = self.config.get("daily_enabled", True)
         self.holiday_enabled = self.config.get("holiday_enabled", True)
         self.startup_enabled = self.config.get("startup_enabled", True)
-        self.reconnect_enabled = self.config.get("reconnect_enabled", True)
         
         # 每日发送配置
         self.daily_hour = self.config.get("daily_hour", 0)  # 每天0点发送
@@ -31,7 +30,6 @@ class SchedulerPlugin(PluginBase):
         self.daily_messages = self.config.get("daily_messages", [])
         self.holiday_messages = self.config.get("holiday_messages", {})
         self.startup_messages = self.config.get("startup_messages", [])
-        self.reconnect_messages = self.config.get("reconnect_messages", [])
         
         # 内部状态
         self.last_startup_time = None
@@ -232,29 +230,3 @@ class SchedulerPlugin(PluginBase):
         
         import random
         return random.choice(messages)
-
-    async def on_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """处理消息（暂时禁用重连检测功能）"""
-        # 重连检测逻辑比较复杂，暂时禁用
-        # 可以在未来版本中改进重连检测机制
-        return None
-        
-        return special_holidays
-
-    def _get_random_message(self, messages: List[str]) -> Optional[str]:
-        """从消息列表中随机选择一条消息"""
-        if not messages:
-            return None
-        
-        import random
-        return random.choice(messages)
-
-    async def on_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """处理消息（暂时禁用重连检测功能）"""
-        # 重连检测逻辑比较复杂，暂时禁用
-        # 可以在未来版本中改进重连检测机制
-        return None
-        """处理消息（暂时禁用重连检测功能）"""
-        # 重连检测逻辑比较复杂，暂时禁用
-        # 可以在未来版本中改进重连检测机制
-        return None
