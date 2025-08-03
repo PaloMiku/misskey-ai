@@ -48,12 +48,13 @@ class MisskeyAPI(IAPIClient):
     def _handle_response_status(self, response, endpoint: str):
         status = response.status
         if status == HTTP_UNAUTHORIZED:
-            logger.error("API 认证失败")
+            logger.error(f"API 认证失败: {endpoint}")
             raise AuthenticationError()
         elif status == HTTP_FORBIDDEN:
-            logger.error("API 权限不足")
+            logger.error(f"API 权限不足: {endpoint}")
             raise AuthenticationError()
         elif status == HTTP_TOO_MANY_REQUESTS:
+            logger.warning(f"API 频率限制: {endpoint}")
             raise APIRateLimitError()
         return self._is_retryable_error(status)
 

@@ -41,8 +41,6 @@ class MisskeyBot:
         api_client: Optional[IAPIClient] = None,
         streaming_client: Optional[IStreamingClient] = None,
     ):
-        if not isinstance(config, Config):
-            raise ValueError("配置参数必须是 Config 类型")
         self.config = config
         self.startup_time = datetime.now(timezone.utc)
         try:

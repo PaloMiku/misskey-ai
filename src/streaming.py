@@ -257,7 +257,9 @@ class StreamingClient(IStreamingClient):
         self, channel_type: ChannelType, event_data: Dict[str, Any]
     ) -> None:
         event_id = event_data.get("id", "unknown")
-        logger.debug(f"收到无事件类型的数据 - 事件 ID: {event_id}")
+        logger.debug(
+            f"收到无事件类型的数据 - 频道: {channel_type.value}, 事件 ID: {event_id}"
+        )
         logger.debug(f"数据结构: {list(event_data.keys())}")
         logger.debug(
             f"事件数据: {json.dumps(event_data, ensure_ascii=False, indent=2)}"
@@ -273,7 +275,9 @@ class StreamingClient(IStreamingClient):
         if channel_type == ChannelType.MAIN:
             await self._handle_main_channel_event(event_type, event_body, event_data)
         else:
-            logger.debug(f"收到未知频道的事件: {channel_type.value} - {event_type}")
+            logger.debug(
+                f"收到未知频道的事件: {channel_type.value} - {event_type}"
+            )  # RESERVED
 
     async def _handle_main_channel_event(
         self, event_type: str, event_body: Dict[str, Any], event_data: Dict[str, Any]
@@ -282,7 +286,7 @@ class StreamingClient(IStreamingClient):
         if event_type in handler_map:
             await self._call_handlers(handler_map[event_type], event_data)
         else:
-            logger.debug(f"收到未知类型的 main 频道事件: {event_type}")
+            logger.debug(f"收到未知类型的 main 频道事件: {event_type}, {event_body}")
             logger.debug(f"数据结构: {list(event_data.keys())}")
             logger.debug(
                 f"事件数据: {json.dumps(event_data, ensure_ascii=False, indent=2)}"
@@ -305,7 +309,7 @@ class StreamingClient(IStreamingClient):
     ) -> bool:
         if event_id and event_id in self.processed_events:
             logger.debug(
-                f"检测到重复事件，跳过处理 - 事件 ID: {event_id}, 类型: {event_type}"
+                f"检测到重复事件，跳过处理 - {event_type}, 事件 ID: {event_id}"
             )
             return True
         return False
