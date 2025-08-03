@@ -1,6 +1,6 @@
 import os
 import aiohttp
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from src.plugin_base import PluginBase
 
 
@@ -106,36 +106,54 @@ class GalinfoPlugin(PluginBase):
         # 标签从 config.yaml 读取，默认 #galgame
         self.trigger_tag = context.config.get('gal_tag', '#galgame')
 
-    async def on_message(self, message_data: dict) -> dict | None:
-        """
-        兼容misskey-ai插件基类和manager，参数为message_data字典，返回标准响应。
-        """
-        text = message_data.get('text', '')
-        if self.trigger_tag in text:
-            keyword = text.replace(self.trigger_tag, '').strip()
-            if not keyword:
-                return {
-                    "handled": True,
-                    "plugin_name": self.name,
-                    "response": "请在标签后输入要查询的游戏名"
-                }
-            try:
+    async def on_mention(self, mention_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """处理 @mention 事件"""
+        return await self._process_message(mention_data)
+
+    async def on_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """处理聊天消息事件"""
+        return await self._process_message(message_data)
+
+    async def _process_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """处理消息的核心逻辑"""
+        try:
+            # 获取消息文本内容
+            note = message_data.get("note", message_data)
+            text = note.get("text", "")
+            
+            if self.trigger_tag in text:
+                keyword = text.replace(self.trigger_tag, '').strip()
+                if not keyword:
+                    return {
+                        "handled": True,
+                        "plugin_name": self.name,
+                        "response": "请在标签后输入要查询的游戏名"
+                    }
+                
+                username = self._extract_username(message_data)
+                self._log_plugin_action("开始查询", f"用户: {username}, 关键词: {keyword}")
+                
                 token = await self.ym.get_token()
                 header = await self.ym.header(token)
                 gal = await self.ym.vague_search_game(header, keyword)
                 info = await self.ym.search_game(header, gal, 100)
                 chains = self.ym.info_list(info)
+                
+                self._log_plugin_action("查询完成", f"找到游戏: {gal}")
+                
                 return {
                     "handled": True,
                     "plugin_name": self.name,
                     "response": f"已匹配最符合的一条：{gal}\n{chains}"
                 }
-            except Exception as e:
-                return {
-                    "handled": True,
-                    "plugin_name": self.name,
-                    "response": f"查询失败：{e}"
-                }
+        except Exception as e:
+            self._log_plugin_action("查询失败", str(e))
+            return {
+                "handled": True,
+                "plugin_name": self.name,
+                "response": f"查询失败：{e}"
+            }
+        
         return None
 
 
