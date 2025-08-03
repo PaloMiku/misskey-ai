@@ -19,16 +19,20 @@ class StatusPlugin(PluginBase):
         super().__init__(context)
         # 配置参数
         self.enabled = self.config.get("enabled", True)
-        self.auto_post_enabled = self.config.get("auto_post_enabled", True)
+        # 移除自动发布相关配置
+        # self.auto_post_enabled = self.config.get("auto_post_enabled", True)
         self.manual_trigger_enabled = self.config.get("manual_trigger_enabled", True)
         
-        # 发布时间配置
-        self.post_hour = self.config.get("post_hour", 0)  # 每天0点发布
+        # 发布时间配置（仅用于定时清理）
+        self.post_hour = self.config.get("post_hour", 0)  # 每天0点
         self.post_minute = self.config.get("post_minute", 0)
         
         # 标签配置
         self.status_tag = self.config.get("status_tag", "#status")
         self.auto_tag = self.config.get("auto_tag", "#dailystatus")
+        
+        # 允许触发的用户名列表
+        self.allowed_users = set(self.config.get("allowed_users", []))  # 新增配置
         
         # 消息模板
         self.message_template = self.config.get("message_template", 
@@ -68,9 +72,11 @@ class StatusPlugin(PluginBase):
             # 记录插件启动时间
             self.current_session_start = datetime.now(timezone.utc)
             
+            # 启动定时清理任务
+            asyncio.create_task(self._daily_cleanup_task())
+            
             self._log_plugin_action(
                 "初始化完成", 
-                f"自动发布: {'启用' if self.auto_post_enabled else '禁用'}, "
                 f"手动触发: {'启用' if self.manual_trigger_enabled else '禁用'}"
             )
             return True
@@ -167,20 +173,21 @@ class StatusPlugin(PluginBase):
             await self._end_current_session()
 
     async def on_mention(self, mention_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """处理提及消息，检查是否为手动触发状态统计"""
+        """处理提及消息，检查是否为手动触发状态统计，仅允许指定用户"""
         if not self.manual_trigger_enabled:
             return None
             
         try:
-            # 获取消息文本
             note_data = mention_data.get("note", {})
             text = note_data.get("text", "").strip()
-            
-            # 检查是否包含状态标签
+            user = note_data.get("user", {}) or note_data.get("createdBy", {})
+            username = user.get("username") or user.get("name") or ""
+            if not username or (self.allowed_users and username not in self.allowed_users):
+                logger.info(f"用户 {username} 无权触发状态统计")
+                return None
+
             if self.status_tag in text:
-                logger.info(f"检测到手动触发状态统计请求: {text}")
-                
-                # 生成昨日统计报告
+                logger.info(f"检测到手动触发状态统计请求: {text} by {username}")
                 report = await self._generate_yesterday_report()
                 if report:
                     return {
@@ -200,19 +207,20 @@ class StatusPlugin(PluginBase):
             return None
 
     async def on_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """处理消息，检查是否为手动触发状态统计"""
+        """处理消息，检查是否为手动触发状态统计，仅允许指定用户"""
         if not self.manual_trigger_enabled:
             return None
             
         try:
-            # 获取消息文本
             text = message_data.get("text", "").strip()
-            
-            # 检查是否包含状态标签
+            user = message_data.get("user", {}) or message_data.get("createdBy", {})
+            username = user.get("username") or user.get("name") or ""
+            if not username or (self.allowed_users and username not in self.allowed_users):
+                logger.info(f"用户 {username} 无权触发状态统计")
+                return None
+
             if self.status_tag in text:
-                logger.info(f"检测到手动触发状态统计请求: {text}")
-                
-                # 生成昨日统计报告
+                logger.info(f"检测到手动触发状态统计请求: {text} by {username}")
                 report = await self._generate_yesterday_report()
                 if report:
                     return {
@@ -232,43 +240,51 @@ class StatusPlugin(PluginBase):
             return None
 
     async def on_auto_post(self) -> Optional[Dict[str, Any]]:
-        """自动发布功能和状态保存"""
-        if not self.auto_post_enabled:
-            # 即使不自动发布，也要定期保存状态
-            await self._save_current_state()
-            return None
-            
+        """定时任务：仅用于每日清理数据库和保存状态，不再自动发布报告"""
         try:
             now = datetime.now(timezone.utc)
-            
-            # 检查是否到了发布时间
+            # 每日0点进行清理
             if (now.hour == self.post_hour and 
                 now.minute >= self.post_minute and 
                 now.minute < self.post_minute + 5):  # 5分钟窗口期
-                
-                today = now.date().isoformat()
-                
-                # 检查今天是否已经发布过
-                if self.last_post_date != today:
-                    logger.info("开始生成每日在线时间统计报告")
-                    
-                    # 生成昨日统计报告
-                    report = await self._generate_yesterday_report()
-                    if report:
-                        self.last_post_date = today
-                        return {
-                            "handled": True,
-                            "plugin_name": self.name,
-                            "response": report
-                        }
-            else:
-                # 不是发布时间，定期保存当前状态
-                await self._save_current_state()
-            
+                await self._cleanup_old_stats()
+            # 定期保存当前状态
+            await self._save_current_state()
         except Exception as e:
-            logger.error(f"Status 插件自动发布失败: {e}")
-            
+            logger.error(f"Status 插件定时任务失败: {e}")
         return None
+
+    async def _cleanup_old_stats(self):
+        """清理30天前的统计数据，防止数据库过大"""
+        try:
+            threshold_date = (datetime.now(timezone.utc).date() - timedelta(days=30)).isoformat()
+            conn = await self.persistence_manager._pool.get_connection()
+            try:
+                await conn.execute(
+                    "DELETE FROM status_daily_stats WHERE date < ?",
+                    (threshold_date,)
+                )
+                await conn.execute(
+                    "DELETE FROM status_sessions WHERE date < ?",
+                    (threshold_date,)
+                )
+                await conn.commit()
+                logger.info(f"已清理30天前的统计数据（截止到 {threshold_date}）")
+            finally:
+                await self.persistence_manager._pool.return_connection(conn)
+        except Exception as e:
+            logger.error(f"清理历史统计数据失败: {e}")
+
+    async def _daily_cleanup_task(self):
+        """后台定时任务，每日0点清理一次数据库"""
+        while True:
+            now = datetime.now(timezone.utc)
+            next_run = now.replace(hour=self.post_hour, minute=self.post_minute, second=0, microsecond=0)
+            if next_run <= now:
+                next_run += timedelta(days=1)
+            wait_seconds = (next_run - now).total_seconds()
+            await asyncio.sleep(wait_seconds)
+            await self._cleanup_old_stats()
 
     async def _save_current_state(self):
         """保存当前会话状态，用于异常恢复"""
@@ -448,10 +464,11 @@ class StatusPlugin(PluginBase):
         """获取插件信息"""
         info = super().get_info()
         info.update({
-            "auto_post_enabled": self.auto_post_enabled,
+            # "auto_post_enabled": self.auto_post_enabled,  # 移除自动发布
             "manual_trigger_enabled": self.manual_trigger_enabled,
             "status_tag": self.status_tag,
             "post_time": f"{self.post_hour:02d}:{self.post_minute:02d}",
+            "allowed_users": list(self.allowed_users),
             "current_session_duration": str(
                 datetime.now(timezone.utc) - self.current_session_start
                 if self.current_session_start else timedelta()
