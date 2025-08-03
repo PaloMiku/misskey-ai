@@ -108,6 +108,10 @@ class PluginBase(IPlugin):
     def _log_plugin_action(self, action: str, details: str = "") -> None:
         logger.info(f"{self.name} 插件{action}{': ' + details if details else ''}")
 
+    def _get_deepseek_api(self):
+        """获取 DeepSeek API 实例"""
+        return self._utils.get("deepseek_api")
+    
     def _validate_plugin_response(self, response: Any) -> bool:
         if not isinstance(response, dict):
             return False

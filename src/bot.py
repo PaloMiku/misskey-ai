@@ -60,7 +60,7 @@ class MisskeyBot:
             logger.error(f"初始化失败: {e}")
             raise ConfigurationError() from e
         self.persistence = PersistenceManager(config.get(ConfigKeys.DB_PATH))
-        self.plugin_manager = PluginManager(config, persistence=self.persistence)
+        self.plugin_manager = PluginManager(config, persistence=self.persistence, deepseek_api=self.deepseek)
         self.state = BotState(self)
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
         logger.info("机器人初始化完成")

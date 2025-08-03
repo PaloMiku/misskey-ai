@@ -22,11 +22,13 @@ class PluginManager:
         config: Config,
         plugins_dir: str = "plugins",
         persistence=None,
+        deepseek_api=None,
     ):
         self.config = config
         self.plugins_dir = Path(plugins_dir)
         self.plugins: Dict[str, PluginBase] = {}
         self.persistence = persistence
+        self.deepseek_api = deepseek_api
 
     async def __aenter__(self):
         return self
@@ -115,6 +117,7 @@ class PluginManager:
         utils_provider = {
             "extract_username": utils.extract_username,
             "extract_user_id": utils.extract_user_id,
+            "deepseek_api": self.deepseek_api,
         }
         context = PluginContext(
             name=plugin_name.capitalize(),

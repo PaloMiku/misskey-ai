@@ -164,6 +164,12 @@ class GalinfoPlugin(PluginBase):
         self.ym = APIYm()
         # 标签从 config.yaml 读取，默认 #galgame
         self.trigger_tag = context.config.get('gal_tag', '#galgame')
+        # AI增强功能开关
+        self.use_ai_enhancement = context.config.get('use_ai_enhancement', False)
+        # 获取 DeepSeek API 实例
+        self.deepseek_api = self._get_deepseek_api()
+        # AI系统提示词（支持自定义）
+        self.ai_system_prompt = context.config.get('ai_system_prompt', self._get_default_prompt())
 
     async def on_mention(self, mention_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """处理 @mention 事件"""
@@ -172,6 +178,43 @@ class GalinfoPlugin(PluginBase):
     async def on_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """处理聊天消息事件"""
         return await self._process_message(message_data)
+
+    def _get_default_prompt(self) -> str:
+        """获取默认的AI系统提示词"""
+        return """你是一个专业的Galgame(美少女游戏)评论专家。请根据用户提供的游戏基本信息，用更生动、有趣的语言重新整理和润色内容，让介绍更加吸引人。
+
+要求：
+1. 保持所有事实信息准确，不要编造内容
+2. 简介部分可以用更生动的语言重新表述，突出游戏的特色和亮点
+3. 保持原有格式结构，只润色文字内容
+4. 语言要生动有趣但不过于夸张
+5. 如果游戏有中文版，可以适当提及对中文玩家的友好性
+6. 总长度控制在400字以内"""
+
+    async def _enhance_with_ai(self, game_info: str, game_name: str) -> str:
+        """使用 AI 对游戏信息进行增强处理"""
+        if not self.use_ai_enhancement or not self.deepseek_api:
+            return game_info
+        
+        try:
+            self._log_plugin_action("AI增强", f"开始对游戏 '{game_name}' 的信息进行AI处理")
+            
+            user_prompt = f"请对以下Galgame信息进行润色优化：\n\n{game_info}"
+            
+            enhanced_info = await self.deepseek_api.generate_text(
+                prompt=user_prompt,
+                system_prompt=self.ai_system_prompt,
+                max_tokens=500,
+                temperature=0.7
+            )
+            
+            self._log_plugin_action("AI增强", f"AI处理完成，增强内容长度: {len(enhanced_info)}")
+            return enhanced_info.strip()
+            
+        except Exception as e:
+            self._log_plugin_action("AI增强失败", f"错误: {str(e)}")
+            # AI增强失败时返回原始信息
+            return game_info
 
     async def _process_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """处理消息的核心逻辑"""
@@ -242,12 +285,18 @@ class GalinfoPlugin(PluginBase):
                     chains = self.ym.info_list(allinfo)
                     self._log_plugin_action("格式化信息", f"生成回复内容，长度: {len(chains)}")
                     
+                    # 使用 AI 增强处理（如果启用）
+                    if self.use_ai_enhancement:
+                        chains = await self._enhance_with_ai(chains, game_name)
+                        self._log_plugin_action("AI增强", f"AI增强完成，最终内容长度: {len(chains)}")
+                    
                     self._log_plugin_action("查询完成", f"找到游戏: {game_name}")
                     
+                    ai_status = " (AI增强)" if self.use_ai_enhancement else ""
                     return {
                         "handled": True,
                         "plugin_name": self.name,
-                        "response": f"已匹配最符合的一条：{game_name}\n{chains}"
+                        "response": f"已匹配最符合的一条：{game_name}{ai_status}\n{chains}"
                     }
                 except Exception as api_error:
                     self._log_plugin_action("API调用失败", f"错误: {str(api_error)}")
