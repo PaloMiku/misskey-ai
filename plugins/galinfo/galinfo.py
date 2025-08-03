@@ -2,7 +2,6 @@ import os
 import aiohttp
 from typing import Dict, Any
 from src.plugin_base import PluginBase
-from src.plugin_manager import PluginCommand, PluginContext
 
 
 
@@ -101,7 +100,7 @@ class GalinfoPlugin(PluginBase):
     description = "提供Galgame信息查询，基于月幕Gal的api"
     version = "1.0"
 
-    def __init__(self, context: PluginContext):
+    def __init__(self, context):
         super().__init__(context)
         self.ym = APIYm()
         # 标签从 config.yaml 读取，默认 #galgame
