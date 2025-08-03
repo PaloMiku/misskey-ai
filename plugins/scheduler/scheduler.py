@@ -136,7 +136,8 @@ class SchedulerPlugin(PluginBase):
             if self.daily_enabled:
                 current_hour = current_time.hour
                 current_minute = current_time.minute
-                
+
+                # 允许在目标分钟内的任意时刻触发，只要当天没发过
                 if (current_hour == self.daily_hour and
                     current_minute == self.daily_minute and
                     self.last_daily_send_date != current_date):
@@ -150,6 +151,22 @@ class SchedulerPlugin(PluginBase):
                         )
                         
                         self._log_plugin_action("每日消息", f"发送每日消息: {daily_message[:30]}...")
+                        return {
+                            "handled": True,
+                            "plugin_name": self.name,
+                            "content": daily_message
+                        }
+                # 容错：如果插件被重启，错过了目标分钟，但当天还没发过，也允许补发
+                elif (current_date != self.last_daily_send_date and
+                      (current_hour > self.daily_hour or
+                       (current_hour == self.daily_hour and current_minute > self.daily_minute))):
+                    daily_message = self._get_random_message(self.daily_messages)
+                    if daily_message:
+                        self.last_daily_send_date = current_date
+                        await self.persistence_manager.set_plugin_data(
+                            self.name, "last_daily_send_date", current_date.isoformat()
+                        )
+                        self._log_plugin_action("每日消息(补发)", f"补发每日消息: {daily_message[:30]}...")
                         return {
                             "handled": True,
                             "plugin_name": self.name,
