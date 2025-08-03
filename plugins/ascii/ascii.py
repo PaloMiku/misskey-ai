@@ -153,18 +153,7 @@ class AsciiArtPlugin(PluginBase):
             if image.mode != 'L':
                 image = image.convert('L')
             
-            # 增强图片质量
-            # 1. 锐化处理
-            image = image.filter(ImageFilter.SHARPEN)
-            
-            # 2. 自适应对比度增强
-            enhancer = ImageEnhance.Contrast(image)
-            image = enhancer.enhance(1.8)
-            
-            # 3. 亮度调整
-            brightness_enhancer = ImageEnhance.Brightness(image)
-            image = brightness_enhancer.enhance(1.1)
-            
+            # 直接使用原始灰度图，不做任何增强处理
             # 计算最优尺寸
             original_width, original_height = image.size
             new_width, new_height = self._calculate_optimal_size(original_width, original_height)
@@ -366,6 +355,17 @@ class AsciiArtPlugin(PluginBase):
             return self._image_to_ascii(image)
 
     def _create_response(self, response_text: str, content_key: str = "response") -> Dict[str, Any]:
+        """创建插件响应"""
+        try:
+            response = {
+                "handled": True,
+                "plugin_name": self.name,
+                content_key: response_text,
+            }
+            return response if self._validate_plugin_response(response) else None
+        except Exception as e:
+            logger.error(f"创建响应时出错: {e}")
+            return None
         """创建插件响应"""
         try:
             response = {

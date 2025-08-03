@@ -3,7 +3,7 @@ priority: 40
 # ASCII 艺术配置
 width: 60       # 固定宽度（当auto_scale为false时使用）
 height: 30      # 固定高度（当auto_scale为false时使用）
-chars: " ░▒▓█"  # 用于生成 ASCII 艺术的字符集，从暗到亮，使用Unicode块字符获得更细腻效果
+chars: "@%#*+=-:. "  # 用于生成 ASCII 艺术的字符集，从暗到亮，标准字符集
 tag: "#ascii"   # 触发 ASCII 转换的标签
 auto_scale: true        # 自动根据图片比例调整尺寸
 max_width: 80          # 最大宽度限制
