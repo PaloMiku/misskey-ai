@@ -1,10 +1,10 @@
 import os
 import platform
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 import psutil
 from loguru import logger
-from tenacity import retry, stop_after_attempt, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt
 
 __all__ = (
     "retry_async",

@@ -3,31 +3,31 @@
 
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from loguru import logger
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from loguru import logger
 
 from .config import Config
+from .constants import (
+    DEFAULT_ERROR_MESSAGE,
+    ERROR_MESSAGES,
+    ConfigKeys,
+)
 from .deepseek_api import DeepSeekAPI
-from .misskey_api import MisskeyAPI
-from .streaming import StreamingClient
-from .persistence import PersistenceManager
-from .plugin_manager import PluginManager
-from .state import BotState
-from .interfaces import ITextGenerator, IAPIClient, IStreamingClient
-from .http_client import HTTPSession
 from .exceptions import (
-    ConfigurationError,
     APIConnectionError,
     APIRateLimitError,
     AuthenticationError,
+    ConfigurationError,
 )
-from .constants import (
-    ERROR_MESSAGES,
-    DEFAULT_ERROR_MESSAGE,
-    ConfigKeys,
-)
+from .http_client import HTTPSession
+from .interfaces import IAPIClient, IStreamingClient, ITextGenerator
+from .misskey_api import MisskeyAPI
+from .persistence import PersistenceManager
+from .plugin_manager import PluginManager
+from .state import BotState
+from .streaming import StreamingClient
 from .utils import extract_user_id, extract_username, get_memory_usage
 
 __all__ = ("MisskeyBot",)
@@ -63,6 +63,7 @@ class MisskeyBot:
         self.plugin_manager = PluginManager(config, persistence=self.persistence, deepseek_api=self.deepseek)
         self.state = BotState(self)
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
+        self.bot_user_id = None
         logger.info("机器人初始化完成")
 
     async def __aenter__(self):
@@ -120,8 +121,8 @@ class MisskeyBot:
             self.streaming = StreamingClient(instance_url, access_token)
             self.streaming.on_mention(self._handle_mention)
             self.streaming.on_message(self._handle_message)
-            await self.streaming._connect_once()
-            self.state.add_task("streaming", self.streaming._listen_messages())
+            await self.streaming.connect_once()
+            self.state.add_task("streaming", self.streaming.listen_messages())
         except (ValueError, OSError) as e:
             logger.error(f"设置 Streaming 连接失败: {e}")
             raise

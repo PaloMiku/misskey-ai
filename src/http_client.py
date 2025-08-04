@@ -1,7 +1,9 @@
 import sys
+from typing import Any, Optional
+
 import aiohttp
-from typing import Optional, Any
 from loguru import logger
+
 from .constants import API_TIMEOUT, WS_TIMEOUT
 from .exceptions import ClientConnectorError
 
@@ -60,7 +62,7 @@ class HTTPClient:
         try:
             return await self.session.ws_connect(
                 url,
-                autoclose=True,
+                autoclose=False,
                 max_msg_size=0,
                 timeout=WS_TIMEOUT,
                 headers={"User-Agent": self.user_agent},

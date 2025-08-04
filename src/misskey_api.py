@@ -1,20 +1,19 @@
-import asyncio
 import json
 from typing import Any, Dict, List, Optional
 
 import aiohttp
 from loguru import logger
 
+from .constants import (
+    API_MAX_RETRIES,
+    HTTP_FORBIDDEN,
+    HTTP_OK,
+    HTTP_TOO_MANY_REQUESTS,
+    HTTP_UNAUTHORIZED,
+    RETRYABLE_HTTP_CODES,
+)
 from .exceptions import APIConnectionError, APIRateLimitError, AuthenticationError
 from .http_client import HTTPSession
-from .constants import (
-    RETRYABLE_HTTP_CODES,
-    HTTP_OK,
-    HTTP_UNAUTHORIZED,
-    HTTP_FORBIDDEN,
-    HTTP_TOO_MANY_REQUESTS,
-    API_MAX_RETRIES,
-)
 from .interfaces import IAPIClient
 from .utils import retry_async
 
@@ -92,14 +91,11 @@ class MisskeyAPI(IAPIClient):
                 return await self._process_response(response, endpoint)
         except (
             aiohttp.ClientError,
-            asyncio.TimeoutError,
-            OSError,
             json.JSONDecodeError,
         ) as e:
             logger.error(f"HTTP 请求错误: {e}")
             raise APIConnectionError() from e
 
-    # RESERVED
     async def request(
         self, endpoint: str, data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:

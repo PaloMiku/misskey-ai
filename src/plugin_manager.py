@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import sys
 import importlib.util
+import sys
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 from loguru import logger
 
-from .plugin_base import PluginBase
-from .config import Config
 from . import utils
+from .config import Config
+from .plugin_base import PluginBase
 
 __all__ = ("PluginManager",)
 

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import re
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 import aiohttp
 from loguru import logger

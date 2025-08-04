@@ -2,17 +2,16 @@ import asyncio
 import json
 import uuid
 from enum import Enum
-from typing import Any, Dict, Optional, Callable, List, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import aiohttp
-import aiohttp.http
 from cachetools import LRUCache
 from loguru import logger
 
+from .constants import MAX_CACHE, RECEIVE_TIMEOUT
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
-from .interfaces import IStreamingClient
-from .constants import MAX_CACHE
 from .http_client import HTTPSession
+from .interfaces import IStreamingClient
 
 __all__ = ("ChannelType", "StreamingClient")
 
@@ -64,22 +63,13 @@ class StreamingClient(IStreamingClient):
         max_delay = 300   # 最大重连间隔（秒）
         while True:
             try:
-                await self._connect_once(channels)
-                await self._listen_messages()
-                # 如果正常退出监听，重置重连间隔
-                retry_delay = 30
-            except WebSocketReconnectError:
+                await self.connect_once(channels)
+                await self.listen_messages()
+            except (WebSocketReconnectError, WebSocketConnectionError):
                 if not self.should_reconnect:
                     break
-                logger.debug(f"空闲连接被关闭，{retry_delay}秒后尝试重新连接...")
-                await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay + 30, max_delay)
-            except WebSocketConnectionError:
-                if not self.should_reconnect:
-                    break
-                logger.debug(f"WebSocket 连接失败，{retry_delay}秒后尝试重新连接...")
-                await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay + 30, max_delay)
+                logger.debug("WebSocket 连接异常，重新连接...")
+                await asyncio.sleep(3)
 
     async def disconnect(self) -> None:
         self.should_reconnect = False
@@ -137,7 +127,7 @@ class StreamingClient(IStreamingClient):
             del self.channels[channel_id]
         logger.debug(f"已断开频道连接: {channel_type.value}")
 
-    async def _connect_once(self, channels: Optional[list[str]] = None) -> None:
+    async def connect_once(self, channels: List[str] = None) -> None:
         if self.running:
             return
         self.running = True
@@ -174,19 +164,25 @@ class StreamingClient(IStreamingClient):
             logger.debug("WebSocket 连接错误详情", exc_info=True)
             raise WebSocketConnectionError()
 
-    async def _listen_messages(self) -> None:
-        while self.running and self._ws_available:
+    async def listen_messages(self) -> None:
+        while self.running:
+            if not self._ws_available:
+                raise WebSocketReconnectError()
             try:
-                msg = await self.ws_connection.receive()
-                if msg is aiohttp.http.WS_CLOSED_MESSAGE:
-                    raise WebSocketReconnectError()
-                elif msg is aiohttp.http.WS_CLOSING_MESSAGE:
+                msg = await asyncio.wait_for(
+                    self.ws_connection.receive(), timeout=RECEIVE_TIMEOUT
+                )
+                if msg.type in (
+                    aiohttp.WSMsgType.CLOSED,
+                    aiohttp.WSMsgType.CLOSING,
+                    aiohttp.WSMsgType.ERROR,
+                ):
                     raise WebSocketReconnectError()
                 elif msg.type == aiohttp.WSMsgType.TEXT:
                     data = json.loads(msg.data)
                     await self._process_message(data)
-                elif msg.type == aiohttp.WSMsgType.ERROR:
-                    raise WebSocketReconnectError()
+            except asyncio.TimeoutError:
+                continue
             except (
                 aiohttp.ClientError,
                 json.JSONDecodeError,

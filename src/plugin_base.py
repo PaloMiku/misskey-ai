@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 
 from loguru import logger
 
 from .interfaces import IPlugin
-from .utils import extract_username, extract_user_id
+from .utils import extract_user_id, extract_username
 
 __all__ = ("PluginBase", "PluginContext")
 
