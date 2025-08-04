@@ -29,6 +29,7 @@ auto_post:
     - "admin"            # 用户名示例
     - "test_user"        # 可以添加多个用户
   debug_tag: "#galinfo_testaichat"  # 调试触发标签
+  direct_post_tag: "#galinfo_aichat"  # 直接发帖触发标签（私聊使用）
   
   # AI发帖系统提示词
   ai_post_system_prompt: |

@@ -42,8 +42,9 @@
 
 ### 调试功能
 
-白名单用户可以使用调试标签手动触发 AI 发帖预览：
+白名单用户可以使用以下功能：
 
+#### 1. 调试预览
 ```
 #galinfo_testaichat
 ```
@@ -53,6 +54,17 @@
 2. 生成 AI 发帖内容
 3. 显示预览结果和调试信息
 4. 不会实际发帖，仅用于测试
+
+#### 2. 直接发帖（私聊推荐）
+```
+#galinfo_aichat
+```
+
+这将：
+1. 从缓存中随机选择游戏数据
+2. 生成 AI 发帖内容
+3. 直接发布到社交媒体
+4. 适合在私聊中使用，避免刷屏
 
 ### 定时发帖设置
 
@@ -77,7 +89,8 @@
      debug_enabled: true
      debug_whitelist:
        - "your_username"    # 添加你的用户名
-     debug_tag: "#galinfo_testaichat"
+     debug_tag: "#galinfo_testaichat"    # 调试预览标签
+     direct_post_tag: "#galinfo_aichat"  # 直接发帖标签
    ```
 
 4. 自定义 AI 发帖风格（可选）：
@@ -141,7 +154,8 @@ auto_post:
 - `auto_post.use_ai_enhanced_data`: 是否使用AI增强的游戏数据进行发帖
 - `auto_post.debug_enabled`: 是否启用调试功能
 - `auto_post.debug_whitelist`: 调试功能白名单用户列表
-- `auto_post.debug_tag`: 调试触发标签
+- `auto_post.debug_tag`: 调试触发标签（预览模式）
+- `auto_post.direct_post_tag`: 直接发帖触发标签
 - `auto_post.ai_post_system_prompt`: AI 发帖系统提示词
 - `auto_post.ai_post_user_prompt`: 用户提示词模板
 

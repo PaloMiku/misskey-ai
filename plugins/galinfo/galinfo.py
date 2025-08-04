@@ -208,6 +208,7 @@ class GalinfoPlugin(PluginBase):
         self.debug_enabled = auto_post_config.get('debug_enabled', True)
         self.debug_whitelist = auto_post_config.get('debug_whitelist', [])
         self.debug_tag = auto_post_config.get('debug_tag', '#galinfo_testaichat')
+        self.direct_post_tag = auto_post_config.get('direct_post_tag', '#galinfo_aichat')
         
         # 定时发帖状态跟踪
         self.last_auto_post_time = None
@@ -305,6 +306,10 @@ class GalinfoPlugin(PluginBase):
             # 检查是否是调试触发标签
             if self.debug_enabled and self.debug_tag in text:
                 return await self._handle_debug_trigger(message_data)
+            
+            # 检查是否是直接发帖触发标签
+            if self.debug_enabled and self.direct_post_tag in text:
+                return await self._handle_direct_post_trigger(message_data)
             
             # 新增：只有 #recreate 而未包含触发标签时，提示格式错误
             if "#recreate" in text and self.trigger_tag not in text:
@@ -632,6 +637,62 @@ class GalinfoPlugin(PluginBase):
                 "handled": True,
                 "plugin_name": self.name,
                 "response": f"调试功能出错：{str(e)}"
+            }
+    
+    async def _handle_direct_post_trigger(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """处理直接发帖触发事件"""
+        try:
+            # 检查用户权限
+            username = self._extract_username(message_data)
+            if username not in self.debug_whitelist:
+                self._log_plugin_action("直接发帖权限检查", f"用户 {username} 不在白名单中")
+                return {
+                    "handled": True,
+                    "plugin_name": self.name,
+                    "response": "抱歉，您没有使用直接发帖功能的权限。"
+                }
+            
+            self._log_plugin_action("直接发帖触发", f"用户 {username} 触发了直接发帖功能")
+            
+            # 从缓存中随机选择一个游戏
+            game_info = self._get_random_game_from_cache()
+            if not game_info:
+                return {
+                    "handled": True,
+                    "plugin_name": self.name,
+                    "response": "直接发帖失败：缓存中没有可用的游戏数据。请先通过查询功能生成一些缓存数据。"
+                }
+            
+            # 生成AI发帖内容
+            post_content = await self._generate_auto_post_content(game_info)
+            if not post_content:
+                return {
+                    "handled": True,
+                    "plugin_name": self.name,
+                    "response": "直接发帖失败：AI生成发帖内容失败。"
+                }
+            
+            # 更新发帖状态（如果需要）
+            self.last_auto_post_time = datetime.datetime.now()
+            self.auto_posts_today += 1
+            
+            data_type = "AI增强" if self.auto_post_use_ai_enhanced_data else "原始"
+            self._log_plugin_action("直接发帖成功", f"为用户 {username} 生成了发帖内容，使用{data_type}数据")
+            
+            # 返回发帖格式，这将触发实际的发帖
+            return {
+                "content": post_content,
+                "visibility": "public",
+                "handled": True,
+                "plugin_name": self.name
+            }
+            
+        except Exception as e:
+            self._log_plugin_action("直接发帖处理失败", str(e))
+            return {
+                "handled": True,
+                "plugin_name": self.name,
+                "response": f"直接发帖功能出错：{str(e)}"
             }
 
 
