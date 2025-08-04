@@ -404,7 +404,7 @@ class MisskeyBot:
                     "visibility", self.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
                 )
                 await self.misskey.create_note(post_content, visibility=visibility)
-                self.state.posts_today += 1
+                # self.state.posts_today += 1  # 插件发帖不计入计数
                 self.state.last_auto_post_time = datetime.now(timezone.utc)
                 log_post_success(post_content)
                 return True
@@ -438,7 +438,7 @@ class MisskeyBot:
             return
         visibility = self.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
         await self.misskey.create_note(post_content, visibility=visibility)
-        self.state.posts_today += 1
+        self.state.posts_today += 1  # AI 生成发帖计入计数
         self.state.last_auto_post_time = datetime.now(timezone.utc)
         log_post_success(post_content)
 
