@@ -2,6 +2,7 @@ import os
 import aiohttp
 import json
 import datetime
+import random
 from typing import Dict, Any, Optional
 from src.plugin_base import PluginBase
 
@@ -173,26 +174,55 @@ class GalinfoPlugin(PluginBase):
         self.deepseek_api = self._get_deepseek_api()
         # AI系统提示词（支持自定义）
         self.ai_system_prompt = context.config.get('ai_system_prompt', self._get_default_prompt())
-        # 新增：缓存文件路径，存放到项目根目录 data/galinfo.json
+        # 缓存文件路径，存放到项目根目录 data/galinfo.json
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         self.cache_file = os.path.join(root_dir, 'data', 'galinfo.json')
 
-    # 新增：载入缓存
+        # 定时发帖功能配置
+        auto_post_config = context.config.get('auto_post', {})
+        self.auto_post_enabled = auto_post_config.get('enabled', False)
+        self.auto_post_interval_hours = auto_post_config.get('interval_hours', 6)
+        self.auto_post_random_delay_minutes = auto_post_config.get('random_delay_minutes', 30)
+        self.auto_post_max_per_day = auto_post_config.get('max_posts_per_day', 4)
+        self.auto_post_use_ai_enhanced_data = auto_post_config.get('use_ai_enhanced_data', False)
+        
+        # 设置默认的AI发帖提示词
+        default_system_prompt = """你是一个热爱Galgame的玩家，正在社交媒体上分享你最近游玩某个游戏的体验和感受。请基于提供的游戏信息，以第一人称的视角写一篇自然、真实的游戏体验分享。
+
+要求：
+1. 以第一人称视角，就像真的在玩这个游戏一样
+2. 可以提及游戏的剧情、角色、画风、音乐等方面的感受
+3. 语言要自然随意，像平时和朋友聊天一样
+4. 可以包含一些个人情感和主观评价
+5. 不要复述游戏的基本信息，而是写游玩感受
+6. 长度控制在150-300字之间
+7. 由于 Misskey 不支持列表语法，禁止使用。可以用「・」来替代
+8. 可以适当使用一些网络用语和表情符合当代社交媒体风格
+9. 不要透露这是AI生成的内容，要像真人发的一样自然
+"""
+        
+        self.auto_post_system_prompt = auto_post_config.get('ai_post_system_prompt', default_system_prompt)
+        self.auto_post_user_prompt = auto_post_config.get('ai_post_user_prompt', '请基于以下游戏信息，写一篇游玩体验分享：\n\n{game_info}\n\n请以自然的语气分享你对这个游戏的感受和体验。')
+        
+        # 调试功能配置
+        self.debug_enabled = auto_post_config.get('debug_enabled', True)
+        self.debug_whitelist = auto_post_config.get('debug_whitelist', [])
+        self.debug_tag = auto_post_config.get('debug_tag', '#galinfo_testaichat')
+        
+        # 定时发帖状态跟踪
+        self.last_auto_post_time = None
+        self.auto_posts_today = 0
+        self.auto_post_reset_date = None
+
+    # 载入缓存
     def _load_cache(self) -> Dict[str, Any]:
         try:
             with open(self.cache_file, 'r', encoding='utf-8') as f:
-                raw = json.load(f)
-            cache = {}
-            for k, v in raw.items():
-                if isinstance(v, dict) and 'response' in v and 'timestamp' in v:
-                    cache[k] = v
-                else:
-                    cache[k] = {"response": v, "timestamp": None}
-            return cache
+                return json.load(f)
         except Exception:
             return {}
 
-    # 新增：保存缓存
+    # 保存缓存
     def _save_cache(self, cache: Dict[str, Any]):
         try:
             # 确保缓存目录存在
@@ -222,6 +252,22 @@ class GalinfoPlugin(PluginBase):
   5. 如果游戏有中文版，可以适当提及对中文玩家的友好性
   6. 总长度控制在400字以内
   7. 由于 Misskey 不支持列表语法，会导致解析器出错，因此禁止使用。列举时请使用「・」。
+"""
+
+    def _get_default_auto_post_prompt(self) -> str:
+        """获取默认的自动发帖AI系统提示词"""
+        return """你是一个热爱Galgame的玩家，正在社交媒体上分享你最近游玩某个游戏的体验和感受。请基于提供的游戏信息，以第一人称的视角写一篇自然、真实的游戏体验分享。
+
+要求：
+1. 以第一人称视角，就像真的在玩这个游戏一样
+2. 可以提及游戏的剧情、角色、画风、音乐等方面的感受
+3. 语言要自然随意，像平时和朋友聊天一样
+4. 可以包含一些个人情感和主观评价
+5. 不要复述游戏的基本信息，而是写游玩感受
+6. 长度控制在150-300字之间
+7. 由于 Misskey 不支持列表语法，禁止使用。可以用「・」来替代
+8. 可以适当使用一些网络用语和表情符合当代社交媒体风格
+9. 不要透露这是AI生成的内容，要像真人发的一样自然
 """
 
     async def _enhance_with_ai(self, game_info: str, game_name: str) -> str:
@@ -255,6 +301,10 @@ class GalinfoPlugin(PluginBase):
             # 获取消息文本内容
             note = message_data.get("note", message_data)
             text = note.get("text", "")
+            
+            # 检查是否是调试触发标签
+            if self.debug_enabled and self.debug_tag in text:
+                return await self._handle_debug_trigger(message_data)
             
             # 新增：只有 #recreate 而未包含触发标签时，提示格式错误
             if "#recreate" in text and self.trigger_tag not in text:
@@ -310,9 +360,10 @@ class GalinfoPlugin(PluginBase):
             game_name = await self.ym.vague_search_game(header, keyword)
             self._log_plugin_action("模糊搜索", f"找到最匹配游戏名: '{game_name}'")
 
-            # 新增：检查缓存
+            # 检查缓存 - 直接查找对应的缓存类型
             cache = self._load_cache()
-            cache_key = f"{game_name}{'_AI' if self.use_ai_enhancement else ''}"
+            cache_key = f"{game_name}{'_AI' if self.use_ai_enhancement else '_original'}"
+                    
             if cache_key in cache and not recreate:
                 entry = cache[cache_key]
                 ts = entry.get("timestamp") or "未知"
@@ -359,11 +410,25 @@ class GalinfoPlugin(PluginBase):
             ai_status = " (AI增强)" if self.use_ai_enhancement else ""
             response_text = f"已匹配最符合的一条：{game_name}{ai_status}\n{chains}"
 
-            # 保存新缓存并记录时间
-            cache[cache_key] = {
-                "response": response_text,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # 保存缓存：同时保存原始和AI增强数据
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 保存原始数据
+            original_response = f"已匹配最符合的一条：{game_name}\n{self.ym.info_list(allinfo)}"
+            cache[f"{game_name}_original"] = {
+                "response": original_response,
+                "timestamp": timestamp,
+                "game_data": allinfo
             }
+            
+            # 如果启用了AI增强，保存AI增强后的数据
+            if self.use_ai_enhancement:
+                cache[f"{game_name}_AI"] = {
+                    "response": response_text,
+                    "timestamp": timestamp,
+                    "game_data": allinfo
+                }
+            
             self._save_cache(cache)
 
             return {
@@ -380,6 +445,194 @@ class GalinfoPlugin(PluginBase):
             }
         
         return None
+
+    async def on_auto_post(self) -> Optional[Dict[str, Any]]:
+        """定时发帖功能"""
+        if not self.auto_post_enabled:
+            return None
+        
+        try:
+            # 检查是否到了发帖时间
+            if not self._should_auto_post():
+                return None
+            
+            # 重置每日计数（如果需要）
+            self._reset_daily_counter_if_needed()
+            
+            # 检查每日发帖限制
+            if self.auto_posts_today >= self.auto_post_max_per_day:
+                self._log_plugin_action("发帖限制", f"今日已达发帖上限 {self.auto_post_max_per_day}")
+                return None
+            
+            # 从缓存中随机选择一个游戏
+            game_info = self._get_random_game_from_cache()
+            if not game_info:
+                self._log_plugin_action("无缓存数据", "缓存中没有可用的游戏数据")
+                return None
+            
+            # 生成AI发帖内容
+            post_content = await self._generate_auto_post_content(game_info)
+            if not post_content:
+                self._log_plugin_action("生成失败", "AI生成发帖内容失败")
+                return None
+            
+            # 更新发帖状态
+            self.last_auto_post_time = datetime.datetime.now()
+            self.auto_posts_today += 1
+            
+            self._log_plugin_action("自动发帖", f"生成发帖内容成功，今日第 {self.auto_posts_today} 次发帖")
+            
+            return {
+                "content": post_content,
+                "visibility": "public"  # 可以根据需要调整可见性
+            }
+        
+        except Exception as e:
+            self._log_plugin_action("自动发帖失败", str(e))
+            return None
+    
+    def _should_auto_post(self) -> bool:
+        """检查是否应该进行自动发帖"""
+        if self.last_auto_post_time is None:
+            return True
+        
+        # 计算下次发帖时间（包含随机延迟）
+        interval_seconds = self.auto_post_interval_hours * 3600
+        random_delay_seconds = random.randint(0, self.auto_post_random_delay_minutes * 60)
+        next_post_time = self.last_auto_post_time + datetime.timedelta(
+            seconds=interval_seconds + random_delay_seconds
+        )
+        
+        return datetime.datetime.now() >= next_post_time
+    
+    def _reset_daily_counter_if_needed(self):
+        """如果是新的一天，重置每日发帖计数"""
+        today = datetime.date.today()
+        if self.auto_post_reset_date != today:
+            self.auto_post_reset_date = today
+            self.auto_posts_today = 0
+            self._log_plugin_action("重置计数", f"新的一天开始，重置发帖计数")
+    
+    def _get_random_game_from_cache(self) -> Optional[str]:
+        """从缓存中随机选择一个游戏信息"""
+        try:
+            cache = self._load_cache()
+            if not cache:
+                return None
+            
+            # 根据配置选择使用AI增强数据还是原始数据
+            target_suffix = '_AI' if self.auto_post_use_ai_enhanced_data else '_original'
+            
+            # 收集符合条件的游戏数据
+            eligible_games = []
+            for key, entry in cache.items():
+                if key.endswith(target_suffix) and 'game_data' in entry:
+                    game_data = entry['game_data']
+                    if game_data:
+                        # 直接使用保存的游戏基本数据重新格式化
+                        game_info = self.ym.info_list(game_data)
+                        eligible_games.append(game_info)
+            
+            if not eligible_games:
+                # 如果没找到目标类型的数据，尝试使用另一种类型
+                fallback_suffix = '_original' if self.auto_post_use_ai_enhanced_data else '_AI'
+                for key, entry in cache.items():
+                    if key.endswith(fallback_suffix) and 'game_data' in entry:
+                        game_data = entry['game_data']
+                        if game_data:
+                            game_info = self.ym.info_list(game_data)
+                            eligible_games.append(game_info)
+                            
+                if eligible_games:
+                    self._log_plugin_action("备用数据", f"未找到{'AI增强' if self.auto_post_use_ai_enhanced_data else '原始'}数据，使用{'原始' if self.auto_post_use_ai_enhanced_data else 'AI增强'}数据")
+                else:
+                    return None
+            
+            # 随机选择一个游戏
+            selected_game = random.choice(eligible_games)
+            data_type = "AI增强" if self.auto_post_use_ai_enhanced_data else "原始"
+            self._log_plugin_action("随机选择", f"从 {len(eligible_games)} 个缓存游戏中选择了一个({data_type}数据)")
+            return selected_game
+        
+        except Exception as e:
+            self._log_plugin_action("获取随机游戏失败", str(e))
+            return None
+    
+    async def _generate_auto_post_content(self, game_info: str) -> Optional[str]:
+        """使用AI生成自动发帖内容"""
+        if not self.deepseek_api:
+            return None
+        
+        try:
+            user_prompt = self.auto_post_user_prompt.format(game_info=game_info)
+            
+            self._log_plugin_action("AI生成发帖", "开始生成自动发帖内容")
+            
+            post_content = await self.deepseek_api.generate_text(
+                prompt=user_prompt,
+                system_prompt=self.auto_post_system_prompt,
+                max_tokens=400,
+                temperature=0.8  # 稍高的温度以增加创造性
+            )
+            
+            self._log_plugin_action("AI生成完成", f"生成内容长度: {len(post_content)}")
+            return post_content.strip()
+        
+        except Exception as e:
+            self._log_plugin_action("AI生成发帖失败", str(e))
+            return None
+    
+    async def _handle_debug_trigger(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """处理调试触发事件"""
+        try:
+            # 检查用户权限
+            username = self._extract_username(message_data)
+            if username not in self.debug_whitelist:
+                self._log_plugin_action("调试权限检查", f"用户 {username} 不在白名单中")
+                return {
+                    "handled": True,
+                    "plugin_name": self.name,
+                    "response": "抱歉，您没有使用调试功能的权限。"
+                }
+            
+            self._log_plugin_action("调试触发", f"用户 {username} 触发了调试发帖功能")
+            
+            # 从缓存中随机选择一个游戏
+            game_info = self._get_random_game_from_cache()
+            if not game_info:
+                return {
+                    "handled": True,
+                    "plugin_name": self.name,
+                    "response": "调试失败：缓存中没有可用的游戏数据。请先通过查询功能生成一些缓存数据。"
+                }
+            
+            # 生成AI发帖内容
+            post_content = await self._generate_auto_post_content(game_info)
+            if not post_content:
+                return {
+                    "handled": True,
+                    "plugin_name": self.name,
+                    "response": "调试失败：AI生成发帖内容失败。"
+                }
+            
+            data_type = "AI增强" if self.auto_post_use_ai_enhanced_data else "原始"
+            debug_response = f"【调试模式 AI 发帖预览】\n使用数据类型：{data_type}\n\n{post_content}\n\n--- 调试信息 ---\n游戏数据预览：\n{game_info[:200]}{'...' if len(game_info) > 200 else ''}"
+            
+            self._log_plugin_action("调试成功", f"为用户 {username} 生成了调试发帖内容")
+            
+            return {
+                "handled": True,
+                "plugin_name": self.name,
+                "response": debug_response
+            }
+            
+        except Exception as e:
+            self._log_plugin_action("调试处理失败", str(e))
+            return {
+                "handled": True,
+                "plugin_name": self.name,
+                "response": f"调试功能出错：{str(e)}"
+            }
 
 
 
