@@ -112,11 +112,10 @@ class WeatherPlugin(PluginBase):
                 if response.status == 200:
                     data = await response.json()
                     return self._format_weather_info_v25(data, display_name)
-                else:
-                    logger.warning(
-                        f"Weather API 2.5 请求失败，状态码: {response.status}"
-                    )
-                    return "抱歉，天气服务暂时不可用。"
+                logger.warning(
+                    f"Weather API 2.5 请求失败，状态码: {response.status}"
+                )
+                return "抱歉，天气服务暂时不可用。"
         except (aiohttp.ClientError, OSError, ValueError, KeyError) as e:
             logger.error(f"获取天气信息失败: {e}")
             return "抱歉，获取天气信息时出现错误。"
