@@ -173,8 +173,9 @@ class GalinfoPlugin(PluginBase):
         self.deepseek_api = self._get_deepseek_api()
         # AI系统提示词（支持自定义）
         self.ai_system_prompt = context.config.get('ai_system_prompt', self._get_default_prompt())
-        # 新增：缓存文件路径
-        self.cache_file = os.path.join(os.path.dirname(__file__), '.cache')
+        # 新增：缓存文件路径，存放到项目根目录 data/galinfo.json
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        self.cache_file = os.path.join(root_dir, 'data', 'galinfo.json')
 
     # 新增：载入缓存
     def _load_cache(self) -> Dict[str, Any]:
@@ -194,6 +195,8 @@ class GalinfoPlugin(PluginBase):
     # 新增：保存缓存
     def _save_cache(self, cache: Dict[str, Any]):
         try:
+            # 确保缓存目录存在
+            os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
             with open(self.cache_file, 'w', encoding='utf-8') as f:
                 json.dump(cache, f, ensure_ascii=False, indent=2)
         except Exception:
