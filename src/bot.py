@@ -434,6 +434,20 @@ class MisskeyBot:
     async def _try_plugin_auto_post_with_results(
         self, plugin_results, log_post_success
     ) -> bool:
+        # 首先处理高优先级的消息（如启动消息、节日消息等）
+        for result in plugin_results:
+            if result and result.get("content") and result.get("priority") == "high":
+                post_content = result.get("content")
+                visibility = result.get(
+                    "visibility", self.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
+                )
+                await self.misskey.create_note(post_content, visibility=visibility)
+                # self.state.posts_today += 1  # 插件发帖不计入计数
+                self.state.last_auto_post_time = datetime.now(timezone.utc)
+                log_post_success(post_content)
+                return True
+        
+        # 如果没有高优先级消息，再处理普通消息
         for result in plugin_results:
             if result and result.get("content"):
                 post_content = result.get("content")

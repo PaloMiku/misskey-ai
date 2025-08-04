@@ -44,9 +44,26 @@ class SchedulerPlugin(PluginBase):
             # 初始化插件数据
             await self._initialize_plugin_data()
             
-            # 注册定时自动发帖任务已移除，改为依赖 on_auto_post 方法
-            # 这样可以避免依赖外部调度器，由机器人的自动发帖功能统一处理
-            self._log_plugin_action("初始化", "使用机器人自动发帖功能进行调度")
+            # 注册定时自动发帖任务
+            try:
+                # 每日定时
+                if hasattr(self.context, "scheduler") and self.daily_enabled:
+                    self.context.scheduler.add_job(
+                        self._schedule_timer_callback, "cron",
+                        hour=self.daily_hour, minute=self.daily_minute
+                    )
+                # 节日定时（对所有 MM-DD 格式的 key）
+                for key in self.holiday_messages:
+                    try:
+                        month, day = map(int, key.split("-"))
+                        self.context.scheduler.add_job(
+                            self._schedule_timer_callback, "cron",
+                            month=month, day=day, hour=0, minute=0
+                        )
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.warning(f"Scheduler 插件注册定时任务失败: {e}")
 
             self._log_plugin_action(
                 "初始化完成", 
@@ -121,7 +138,8 @@ class SchedulerPlugin(PluginBase):
                                 "content": message,
                                 "visibility": "public",
                                 "handled": True,
-                                "plugin_name": self.name
+                                "plugin_name": self.name,
+                                "priority": "high"  # 标记为高优先级消息
                             }
             
             # 检查节日消息
@@ -133,7 +151,8 @@ class SchedulerPlugin(PluginBase):
                         "content": holiday_message,
                         "visibility": "public",
                         "handled": True,
-                        "plugin_name": self.name
+                        "plugin_name": self.name,
+                        "priority": "high"  # 标记为高优先级消息
                     }
             
             # 检查每日消息（仅在指定时间触发）
@@ -157,7 +176,8 @@ class SchedulerPlugin(PluginBase):
                                 "content": message,
                                 "visibility": "public",
                                 "handled": True,
-                                "plugin_name": self.name
+                                "plugin_name": self.name,
+                                "priority": "high"  # 标记为高优先级消息
                             }
             
             return None
@@ -234,3 +254,49 @@ class SchedulerPlugin(PluginBase):
         
         import random
         return random.choice(messages)
+
+    async def _schedule_runner(self):
+        """调度触发器：检查并发送定时消息"""
+        try:
+            current_time = datetime.now(timezone.utc)
+            
+            # 检查节日消息
+            if self.holiday_enabled:
+                holiday_message = await self._check_holiday_message(current_time)
+                if holiday_message:
+                    self._log_plugin_action("定时发送节日消息", f"内容: {holiday_message[:50]}...")
+                    # 直接通过 Bot 的 API 发帖
+                    if hasattr(self.context, 'misskey'):
+                        await self.context.misskey.create_note(holiday_message, visibility="public")
+                        return
+            
+            # 检查每日消息
+            if (self.daily_enabled and 
+                current_time.hour == self.daily_hour and 
+                current_time.minute >= self.daily_minute and 
+                current_time.minute < self.daily_minute + 5):  # 5分钟窗口期
+                
+                today_date = current_time.date()
+                if self.last_daily_send_date != today_date:
+                    self.last_daily_send_date = today_date
+                    await self.persistence_manager.set_plugin_data(
+                        self.name, "last_daily_send_date", today_date.isoformat()
+                    )
+                    
+                    if self.daily_messages:
+                        message = self._get_random_message(self.daily_messages)
+                        if message:
+                            self._log_plugin_action("定时发送每日消息", f"内容: {message[:50]}...")
+                            # 直接通过 Bot 的 API 发帖
+                            if hasattr(self.context, 'misskey'):
+                                await self.context.misskey.create_note(message, visibility="public")
+                                return
+                                
+        except Exception as e:
+            logger.error(f"Scheduler 插件定时任务执行失败: {e}")
+            
+    def _schedule_timer_callback(self):
+        """同步调度触发器包装器"""
+        import asyncio
+        # 创建异步任务来执行实际的调度逻辑
+        asyncio.create_task(self._schedule_runner())
