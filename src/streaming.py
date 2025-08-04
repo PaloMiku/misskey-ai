@@ -5,11 +5,10 @@ from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import aiohttp
-import aiohttp.http
 from cachetools import LRUCache
 from loguru import logger
 
-from .constants import MAX_CACHE
+from .constants import MAX_CACHE, RECEIVE_TIMEOUT
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .http_client import HTTPSession
 from .interfaces import IStreamingClient
@@ -164,18 +163,24 @@ class StreamingClient(IStreamingClient):
             raise WebSocketConnectionError()
 
     async def listen_messages(self) -> None:
-        while self.running and self._ws_available:
+        while self.running:
+            if not self._ws_available:
+                raise WebSocketReconnectError()
             try:
-                msg = await self.ws_connection.receive()
-                if msg is aiohttp.http.WS_CLOSED_MESSAGE:
-                    raise WebSocketReconnectError()
-                elif msg is aiohttp.http.WS_CLOSING_MESSAGE:
+                msg = await asyncio.wait_for(
+                    self.ws_connection.receive(), timeout=RECEIVE_TIMEOUT
+                )
+                if msg.type in (
+                    aiohttp.WSMsgType.CLOSED,
+                    aiohttp.WSMsgType.CLOSING,
+                    aiohttp.WSMsgType.ERROR,
+                ):
                     raise WebSocketReconnectError()
                 elif msg.type == aiohttp.WSMsgType.TEXT:
                     data = json.loads(msg.data)
                     await self._process_message(data)
-                elif msg.type == aiohttp.WSMsgType.ERROR:
-                    raise WebSocketReconnectError()
+            except asyncio.TimeoutError:
+                continue
             except (
                 aiohttp.ClientError,
                 json.JSONDecodeError,
