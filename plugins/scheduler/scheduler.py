@@ -49,7 +49,7 @@ class SchedulerPlugin(PluginBase):
                 # 每日定时
                 if hasattr(self.context, "scheduler") and self.daily_enabled:
                     self.context.scheduler.add_job(
-                        self._schedule_runner, "cron",
+                        self._schedule_timer_callback, "cron",
                         hour=self.daily_hour, minute=self.daily_minute
                     )
                 # 节日定时（对所有 MM-DD 格式的 key）
@@ -57,7 +57,7 @@ class SchedulerPlugin(PluginBase):
                     try:
                         month, day = map(int, key.split("-"))
                         self.context.scheduler.add_job(
-                            self._schedule_runner, "cron",
+                            self._schedule_timer_callback, "cron",
                             month=month, day=day, hour=0, minute=0
                         )
                     except Exception:
@@ -117,8 +117,71 @@ class SchedulerPlugin(PluginBase):
             logger.error(f"Scheduler 插件处理启动事件失败: {e}")
 
     async def on_auto_post(self) -> Optional[Dict[str, Any]]:
-        """自动发帖时的处理（已移除自身发帖逻辑，仅返回 None）"""
-        return None
+        """自动发帖时的处理：检查是否有待发送的启动、每日或节日消息"""
+        try:
+            current_time = datetime.now(timezone.utc)
+            
+            # 检查是否有启动消息需要发送
+            if self.startup_enabled:
+                should_send_startup = await self.persistence_manager.get_plugin_data(
+                    self.name, "should_send_startup"
+                )
+                if should_send_startup == "true":
+                    await self.persistence_manager.set_plugin_data(
+                        self.name, "should_send_startup", "false"
+                    )
+                    if self.startup_messages:
+                        message = self._get_random_message(self.startup_messages)
+                        if message:
+                            self._log_plugin_action("发送启动消息", f"内容: {message[:50]}...")
+                            return {
+                                "content": message,
+                                "visibility": "public",
+                                "handled": True,
+                                "plugin_name": self.name
+                            }
+            
+            # 检查节日消息
+            if self.holiday_enabled:
+                holiday_message = await self._check_holiday_message(current_time)
+                if holiday_message:
+                    self._log_plugin_action("发送节日消息", f"内容: {holiday_message[:50]}...")
+                    return {
+                        "content": holiday_message,
+                        "visibility": "public",
+                        "handled": True,
+                        "plugin_name": self.name
+                    }
+            
+            # 检查每日消息（仅在指定时间触发）
+            if (self.daily_enabled and 
+                current_time.hour == self.daily_hour and 
+                current_time.minute >= self.daily_minute and 
+                current_time.minute < self.daily_minute + 5):  # 5分钟窗口期
+                
+                today_date = current_time.date()
+                if self.last_daily_send_date != today_date:
+                    self.last_daily_send_date = today_date
+                    await self.persistence_manager.set_plugin_data(
+                        self.name, "last_daily_send_date", today_date.isoformat()
+                    )
+                    
+                    if self.daily_messages:
+                        message = self._get_random_message(self.daily_messages)
+                        if message:
+                            self._log_plugin_action("发送每日消息", f"内容: {message[:50]}...")
+                            return {
+                                "content": message,
+                                "visibility": "public",
+                                "handled": True,
+                                "plugin_name": self.name
+                            }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Scheduler 插件自动发帖处理失败: {e}")
+            return None
 
     async def _initialize_plugin_data(self) -> None:
         """初始化插件数据"""
@@ -189,8 +252,48 @@ class SchedulerPlugin(PluginBase):
         import random
         return random.choice(messages)
 
-    def _schedule_runner(self):
-        """调度触发器：调用 Bot 的自动发帖接口"""
+    async def _schedule_runner(self):
+        """调度触发器：检查并发送定时消息"""
+        try:
+            current_time = datetime.now(timezone.utc)
+            
+            # 检查节日消息
+            if self.holiday_enabled:
+                holiday_message = await self._check_holiday_message(current_time)
+                if holiday_message:
+                    self._log_plugin_action("定时发送节日消息", f"内容: {holiday_message[:50]}...")
+                    # 直接通过 Bot 的 API 发帖
+                    if hasattr(self.context, 'misskey'):
+                        await self.context.misskey.create_note(holiday_message, visibility="public")
+                        return
+            
+            # 检查每日消息
+            if (self.daily_enabled and 
+                current_time.hour == self.daily_hour and 
+                current_time.minute >= self.daily_minute and 
+                current_time.minute < self.daily_minute + 5):  # 5分钟窗口期
+                
+                today_date = current_time.date()
+                if self.last_daily_send_date != today_date:
+                    self.last_daily_send_date = today_date
+                    await self.persistence_manager.set_plugin_data(
+                        self.name, "last_daily_send_date", today_date.isoformat()
+                    )
+                    
+                    if self.daily_messages:
+                        message = self._get_random_message(self.daily_messages)
+                        if message:
+                            self._log_plugin_action("定时发送每日消息", f"内容: {message[:50]}...")
+                            # 直接通过 Bot 的 API 发帖
+                            if hasattr(self.context, 'misskey'):
+                                await self.context.misskey.create_note(message, visibility="public")
+                                return
+                                
+        except Exception as e:
+            logger.error(f"Scheduler 插件定时任务执行失败: {e}")
+            
+    def _schedule_timer_callback(self):
+        """同步调度触发器包装器"""
         import asyncio
-        # 直接向 Bot 的 _auto_post 发起调用
-        asyncio.create_task(self.context._auto_post())
+        # 创建异步任务来执行实际的调度逻辑
+        asyncio.create_task(self._schedule_runner())
