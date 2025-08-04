@@ -63,7 +63,7 @@ class StreamingClient(IStreamingClient):
             try:
                 await self.connect_once(channels)
                 await self.listen_messages()
-            except WebSocketReconnectError:
+            except WebSocketConnectionError:
                 if not self.should_reconnect:
                     break
                 logger.debug("WebSocket 连接异常，重新连接...")
