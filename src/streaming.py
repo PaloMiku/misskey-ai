@@ -63,7 +63,7 @@ class StreamingClient(IStreamingClient):
             try:
                 await self.connect_once(channels)
                 await self.listen_messages()
-            except (WebSocketReconnectError, WebSocketConnectionError):
+            except WebSocketReconnectError:
                 if not self.should_reconnect:
                     break
                 logger.debug("WebSocket 连接异常，重新连接...")
@@ -176,7 +176,7 @@ class StreamingClient(IStreamingClient):
                     aiohttp.WSMsgType.ERROR,
                 ):
                     raise WebSocketReconnectError()
-                elif msg.type == aiohttp.WSMsgType.TEXT:
+                if msg.type == aiohttp.WSMsgType.TEXT:
                     data = json.loads(msg.data)
                     await self._process_message(data)
             except asyncio.TimeoutError:
