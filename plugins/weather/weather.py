@@ -23,7 +23,7 @@ class WeatherPlugin(PluginBase):
         self.enabled = bool(self.api_key)
         self.base_url = "https://api.openweathermap.org/data/2.5/weather"
         self.geocoding_url = "https://api.openweathermap.org/geo/1.0/direct"
-        self.session = None
+        self.session: Optional[aiohttp.ClientSession] = None
 
     async def initialize(self) -> bool:
         if not self.api_key:
