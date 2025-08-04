@@ -64,14 +64,10 @@ class StreamingClient(IStreamingClient):
             try:
                 await self.connect_once(channels)
                 await self.listen_messages()
-            except WebSocketReconnectError:
+            except (WebSocketReconnectError, WebSocketConnectionError):
                 if not self.should_reconnect:
                     break
-                logger.debug("空闲连接被关闭，重新连接...")
-                await asyncio.sleep(3)
-            except WebSocketConnectionError:
-                if not self.should_reconnect:
-                    break
+                logger.debug("WebSocket 连接异常，重新连接...")
                 await asyncio.sleep(3)
 
     async def disconnect(self) -> None:

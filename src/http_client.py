@@ -62,7 +62,7 @@ class HTTPClient:
         try:
             return await self.session.ws_connect(
                 url,
-                autoclose=True,
+                autoclose=False,
                 max_msg_size=0,
                 timeout=WS_TIMEOUT,
                 headers={"User-Agent": self.user_agent},
