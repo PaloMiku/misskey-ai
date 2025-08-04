@@ -303,12 +303,16 @@ class GalinfoPlugin(PluginBase):
             note = message_data.get("note", message_data)
             text = note.get("text", "")
             
+            self._log_plugin_action("消息处理", f"收到消息内容: {text[:100]}...")
+            
             # 检查是否是调试触发标签
             if self.debug_enabled and self.debug_tag in text:
+                self._log_plugin_action("触发检测", "检测到调试触发标签")
                 return await self._handle_debug_trigger(message_data)
             
             # 检查是否是直接发帖触发标签
             if self.debug_enabled and self.direct_post_tag in text:
+                self._log_plugin_action("触发检测", "检测到直接发帖触发标签")
                 return await self._handle_direct_post_trigger(message_data)
             
             # 新增：只有 #recreate 而未包含触发标签时，提示格式错误
@@ -642,8 +646,12 @@ class GalinfoPlugin(PluginBase):
     async def _handle_direct_post_trigger(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """处理直接发帖触发事件"""
         try:
+            self._log_plugin_action("直接发帖", "开始处理直接发帖触发事件")
+            
             # 检查用户权限
             username = self._extract_username(message_data)
+            self._log_plugin_action("权限检查", f"检查用户 {username} 权限，白名单: {self.debug_whitelist}")
+            
             if username not in self.debug_whitelist:
                 self._log_plugin_action("直接发帖权限检查", f"用户 {username} 不在白名单中")
                 return {
@@ -657,20 +665,26 @@ class GalinfoPlugin(PluginBase):
             # 从缓存中随机选择一个游戏
             game_info = self._get_random_game_from_cache()
             if not game_info:
+                self._log_plugin_action("缓存检查", "缓存中没有可用的游戏数据")
                 return {
                     "handled": True,
                     "plugin_name": self.name,
                     "response": "直接发帖失败：缓存中没有可用的游戏数据。请先通过查询功能生成一些缓存数据。"
                 }
             
+            self._log_plugin_action("缓存检查", f"成功获取游戏数据，长度: {len(game_info)}")
+            
             # 生成AI发帖内容
             post_content = await self._generate_auto_post_content(game_info)
             if not post_content:
+                self._log_plugin_action("内容生成", "AI生成发帖内容失败")
                 return {
                     "handled": True,
                     "plugin_name": self.name,
                     "response": "直接发帖失败：AI生成发帖内容失败。"
                 }
+            
+            self._log_plugin_action("内容生成", f"成功生成发帖内容，长度: {len(post_content)}")
             
             # 更新发帖状态（如果需要）
             self.last_auto_post_time = datetime.datetime.now()
@@ -680,12 +694,15 @@ class GalinfoPlugin(PluginBase):
             self._log_plugin_action("直接发帖成功", f"为用户 {username} 生成了发帖内容，使用{data_type}数据")
             
             # 返回发帖格式，这将触发实际的发帖
-            return {
+            result = {
                 "content": post_content,
                 "visibility": "public",
                 "handled": True,
                 "plugin_name": self.name
             }
+            
+            self._log_plugin_action("返回结果", f"返回发帖结果: {result}")
+            return result
             
         except Exception as e:
             self._log_plugin_action("直接发帖处理失败", str(e))

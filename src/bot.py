@@ -221,6 +221,25 @@ class MisskeyBot:
         for result in plugin_results:
             if result and result.get("handled"):
                 logger.debug(f"提及已被插件处理: {result.get('plugin_name')}")
+                
+                # 处理插件触发的发帖请求
+                if result.get("content"):
+                    post_content = result.get("content")
+                    visibility = result.get("visibility", "public")
+                    logger.info(f"检测到插件发帖请求 - 内容长度: {len(post_content)}, 可见性: {visibility}")
+                    await self.misskey.create_note(post_content, visibility=visibility)
+                    logger.info(f"插件触发发帖 @{mention_data['username']}: {self._format_log_text(post_content)}")
+                    
+                    # 可选：给用户发送确认回复
+                    confirmation = f"✅ 已成功发布内容！"
+                    formatted_confirmation = f"@{mention_data['username']}\n{confirmation}"
+                    await self.misskey.create_note(
+                        formatted_confirmation, reply_id=mention_data["reply_target_id"]
+                    )
+                    logger.info(f"插件已回复 @{mention_data['username']}: {confirmation}")
+                    return True
+                
+                # 处理普通回复
                 response = result.get("response")
                 if response:
                     formatted_response = f"@{mention_data['username']}\n{response}"
@@ -307,9 +326,27 @@ class MisskeyBot:
         self, message: Dict[str, Any], user_id: str, username: str
     ) -> bool:
         plugin_results = await self.plugin_manager.on_message(message)
-        for result in plugin_results:
+        logger.debug(f"插件消息处理结果数量: {len(plugin_results)}")
+        for i, result in enumerate(plugin_results):
+            logger.debug(f"插件结果 {i}: {result}")
             if result and result.get("handled"):
                 logger.debug(f"聊天已被插件处理: {result.get('plugin_name')}")
+                
+                # 处理插件触发的发帖请求
+                if result.get("content"):
+                    post_content = result.get("content")
+                    visibility = result.get("visibility", "public")
+                    logger.info(f"检测到插件发帖请求 - 内容长度: {len(post_content)}, 可见性: {visibility}")
+                    await self.misskey.create_note(post_content, visibility=visibility)
+                    logger.info(f"插件触发发帖 @{username}: {self._format_log_text(post_content)}")
+                    
+                    # 可选：给用户发送确认消息
+                    confirmation = f"✅ 已成功发布内容！"
+                    await self.misskey.send_message(user_id, confirmation)
+                    logger.info(f"插件已回复 @{username}: {confirmation}")
+                    return True
+                
+                # 处理普通回复消息
                 response = result.get("response")
                 if response:
                     await self.misskey.send_message(user_id, response)
