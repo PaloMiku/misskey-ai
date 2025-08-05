@@ -183,6 +183,16 @@ class MisskeyBot:
                 reply_info = note_data.get("reply", {})
                 if reply_info and reply_info.get("text"):
                     text = f"{reply_info.get('text')}\n\n{text}"
+                # 检查是否在回复中提到了机器人
+                if self.bot_user_id not in text and f"@{username}" not in text:
+                    logger.debug("回复中未提及机器人，跳过处理")
+                    return {
+                        "mention_id": None,
+                        "reply_target_id": None,
+                        "text": "",
+                        "user_id": None,
+                        "username": None,
+                    }
             else:
                 text = note.get("note", {}).get("text", "")
                 user_id = extract_user_id(note)
