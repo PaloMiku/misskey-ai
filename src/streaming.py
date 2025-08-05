@@ -67,6 +67,7 @@ class StreamingClient(IStreamingClient):
                 if not self.should_reconnect:
                     break
                 self.running = False
+                self.channels.clear()
                 logger.debug("WebSocket 连接异常，重新连接...")
                 await asyncio.sleep(3)
 
