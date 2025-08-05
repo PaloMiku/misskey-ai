@@ -64,6 +64,11 @@ async def _setup_monitoring_and_signals() -> None:
         logger.info(f"收到信号 {signal.Signals(sig).name}，准备关闭...")
         if shutdown_event and not shutdown_event.is_set():
             shutdown_event.set()
+        try:
+            loop = asyncio.get_running_loop()
+            loop.call_soon_threadsafe(lambda: None)
+        except RuntimeError:
+            pass
 
     for sig in signals:
         try:
