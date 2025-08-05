@@ -64,6 +64,7 @@ class MisskeyBot:
         self.state = BotState(self)
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
         self.bot_user_id = None
+        self.bot_username = None
         logger.info("机器人初始化完成")
 
     async def __aenter__(self):
@@ -92,7 +93,10 @@ class MisskeyBot:
         await self.deepseek.initialize()
         current_user = await self.misskey.get_current_user()
         self.bot_user_id = current_user.get("id")
-        logger.info(f"已连接 Misskey 实例，机器人 ID: {self.bot_user_id}")
+        self.bot_username = current_user.get("username")
+        logger.info(
+            f"已连接 Misskey 实例，机器人 ID: {self.bot_user_id}, @{self.bot_username}"
+        )
         await self.plugin_manager.load_plugins()
         await self.plugin_manager.on_startup()
 
@@ -187,6 +191,9 @@ class MisskeyBot:
                 text = note.get("note", {}).get("text", "")
                 user_id = extract_user_id(note)
                 username = extract_username(note)
+            if not self._is_bot_mentioned(text):
+                logger.debug(f"用户 @{username} 的回复中未 @机器人，跳过处理")
+                mention_id = None
             return {
                 "mention_id": mention_id,
                 "reply_target_id": reply_target_id,
@@ -203,6 +210,11 @@ class MisskeyBot:
                 "user_id": None,
                 "username": None,
             }
+
+    def _is_bot_mentioned(self, text: str) -> bool:
+        if not text or not self.bot_username:
+            return False
+        return f"@{self.bot_username}" in text
 
     async def _process_mention(
         self, mention_data: Dict[str, Any], note: Dict[str, Any]
