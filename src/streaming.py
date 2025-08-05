@@ -68,7 +68,7 @@ class StreamingClient(IStreamingClient):
                     break
                 self.running = False
                 self.channels.clear()
-                logger.debug("WebSocket 连接异常，重新连接...")
+                logger.info("WebSocket 连接异常，重新连接...")
                 await asyncio.sleep(3)
 
     async def disconnect(self) -> None:
@@ -109,8 +109,7 @@ class StreamingClient(IStreamingClient):
             raise WebSocketConnectionError()
         await self.ws_connection.send_json(message)
         self.channels[channel_id] = {"type": channel_type, "params": params or {}}
-        if self._first_connection:
-            logger.info(f"已连接频道: {channel_type.value} (ID: {channel_id})")
+        logger.info(f"已连接频道: {channel_type.value} (ID: {channel_id})")
         return channel_id
 
     # RESERVED
@@ -156,8 +155,7 @@ class StreamingClient(IStreamingClient):
         safe_url = f"{base_ws_url}/streaming"
         try:
             self.ws_connection = await self.http_client.ws_connect(ws_url)
-            if self._first_connection:
-                logger.info(f"WebSocket 连接成功: {safe_url}")
+            logger.info(f"WebSocket 连接成功: {safe_url}")
         except Exception:
             await self._cleanup_failed_connection()
             logger.error("WebSocket 连接失败")
