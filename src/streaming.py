@@ -178,7 +178,7 @@ class StreamingClient(IStreamingClient):
                     raise WebSocketReconnectError()
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     data = json.loads(msg.data)
-                    await self._process_message(data)
+                    await self._process_message(data, msg.data)
             except asyncio.TimeoutError:
                 continue
             except (
@@ -209,7 +209,12 @@ class StreamingClient(IStreamingClient):
                 await self.ws_connection.send_json(message)
         self.channels.clear()
 
-    async def _process_message(self, data: Dict[str, Any]) -> None:
+    async def _process_message(
+        self, data: Dict[str, Any], raw_message: str = None
+    ) -> None:
+        if not data:
+            logger.debug(f"收到空消息，跳过处理: {raw_message}")
+            return
         message_type = data.get("type")
         body = data.get("body", {})
         if message_type == "channel":
