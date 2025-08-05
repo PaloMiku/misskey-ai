@@ -122,7 +122,7 @@ class MisskeyBot:
             self.streaming.on_mention(self._handle_mention)
             self.streaming.on_message(self._handle_message)
             await self.streaming.connect_once()
-            self.state.add_task("streaming", self.streaming.listen_messages())
+            self.state.add_task("streaming", self.streaming.connect())
         except (ValueError, OSError) as e:
             logger.error(f"设置 Streaming 连接失败: {e}")
             raise

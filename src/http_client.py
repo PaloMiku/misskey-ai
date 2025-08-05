@@ -25,10 +25,7 @@ class HTTPClient:
     @property
     def _connector(self) -> aiohttp.TCPConnector:
         if self.__connector is None or self.__connector.closed:
-            self.__connector = aiohttp.TCPConnector(
-                enable_cleanup_closed=True,
-                force_close=True,
-            )
+            self.__connector = aiohttp.TCPConnector()
         return self.__connector
 
     @property
