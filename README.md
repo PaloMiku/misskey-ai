@@ -18,7 +18,7 @@
 
 ### 主要功能
 
-- 使用 OpenAI API 兼容性模型生成内容
+- 使用 OpenAI SDK 兼容性模型生成内容
   - [OpenAI](https://platform.openai.com/docs/overview)
   - [DeepSeek](https://api-docs.deepseek.com/)（默认）
   - [Gemini](https://ai.google.dev/gemini-api/docs/openai)
@@ -28,10 +28,10 @@
 - 自定义系统提示（性格）和发帖提示
 - 根据已设置的周期和可见性自动发帖
 - 实时响应用户提及（@）和聊天
-- 利用插件系统添加自己需要的额外功能
-  - [example](./plugins/example)
-  - [topics](./plugins/topics)
-  - [weather](./plugins/weather)
+- 利用插件系统添加丰富的额外功能
+  - [Example](./plugins/example)
+  - [Topics](./plugins/topics)
+  - [Weather](./plugins/weather)
   - ...
 
 ## 开始
@@ -157,4 +157,6 @@ docker compose up -d
 
 > [!NOTE]
 >
-> 自动发帖时 API 请求默认携带时间戳，以绕过某些 AI 服务的缓存机制
+> 自动发帖会尽量绕过 [Prompt caching](https://platform.openai.com/docs/guides/prompt-caching)
+> 但相同提示词依然容易输出近似内容
+> 想让帖子多样化请配置并启用 [Topics](./plugins/topics) 插件
