@@ -157,6 +157,6 @@ docker compose up -d
 
 > [!NOTE]
 >
-> 自动发帖会尽量绕过 [Prompt caching](https://platform.openai.com/docs/guides/prompt-caching)
-> 但相同提示词依然容易输出近似内容
+> 自动发帖会尽量绕过 [Prompt caching](https://platform.openai.com/docs/guides/prompt-caching)<br>
+> 但相同提示词依然容易输出近似内容<br>
 > 想让帖子多样化请配置并启用 [Topics](./plugins/topics) 插件
