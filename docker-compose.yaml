@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
 
     volumes:
-      # - ./config.yaml:/app/config.yaml:ro
+      # - ./plugins/your_plugin/config.yaml:/app/plugins/your_plugin/config.yaml:ro
       - ./data:/app/data
       - ./logs:/app/logs
 
