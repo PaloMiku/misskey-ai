@@ -1,18 +1,18 @@
 from .bot import MisskeyBot
+from .config import Config
+from .misskey_api import MisskeyAPI
+from .openai_api import OpenAIAPI
+from .persistence import PersistenceManager
 from .plugin_base import PluginBase
 from .plugin_manager import PluginManager
-from .config import Config
-from .deepseek_api import DeepSeekAPI
-from .misskey_api import MisskeyAPI
 from .streaming import StreamingClient
-from .persistence import PersistenceManager
 
 __all__ = [
     "MisskeyBot",
     "PluginBase",
     "PluginManager",
     "Config",
-    "DeepSeekAPI",
+    "OpenAIAPI",
     "MisskeyAPI",
     "StreamingClient",
     "PersistenceManager",

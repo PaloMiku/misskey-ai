@@ -14,7 +14,6 @@ from .constants import (
     ERROR_MESSAGES,
     ConfigKeys,
 )
-from .deepseek_api import DeepSeekAPI
 from .exceptions import (
     APIConnectionError,
     APIRateLimitError,
@@ -24,6 +23,7 @@ from .exceptions import (
 from .http_client import HTTPSession
 from .interfaces import IAPIClient, IStreamingClient, ITextGenerator
 from .misskey_api import MisskeyAPI
+from .openai_api import OpenAIAPI
 from .persistence import PersistenceManager
 from .plugin_manager import PluginManager
 from .state import BotState
@@ -50,10 +50,10 @@ class MisskeyBot:
             self.streaming = streaming_client or StreamingClient(
                 instance_url, access_token
             )
-            self.deepseek = text_generator or DeepSeekAPI(
-                config.get(ConfigKeys.DEEPSEEK_API_KEY),
-                config.get(ConfigKeys.DEEPSEEK_MODEL),
-                config.get(ConfigKeys.DEEPSEEK_API_BASE),
+            self.openai = text_generator or OpenAIAPI(
+                config.get(ConfigKeys.OPENAI_API_KEY),
+                config.get(ConfigKeys.OPENAI_MODEL),
+                config.get(ConfigKeys.OPENAI_API_BASE),
             )
             self.scheduler = AsyncIOScheduler()
         except (ValueError, TypeError, KeyError) as e:
@@ -90,7 +90,7 @@ class MisskeyBot:
 
     async def _initialize_services(self) -> None:
         await self.persistence.initialize()
-        await self.deepseek.initialize()
+        await self.openai.initialize()
         current_user = await self.misskey.get_current_user()
         self.bot_user_id = current_user.get("id")
         self.bot_username = current_user.get("username")
@@ -148,7 +148,7 @@ class MisskeyBot:
             await self.state.cleanup_tasks()
             await self.streaming.close()
             await self.misskey.close()
-            await self.deepseek.close()
+            await self.openai.close()
             await HTTPSession.close_session()
             await self.persistence.close()
         except (OSError, ValueError) as e:
@@ -247,7 +247,7 @@ class MisskeyBot:
 
     async def _generate_ai_mention_response(self, mention_data: Dict[str, Any]) -> None:
         try:
-            reply = await self.deepseek.generate_reply(
+            reply = await self.openai.generate_reply(
                 mention_data["text"], self.system_prompt, **self._ai_config
             )
             logger.debug("生成提及回复成功")
@@ -338,7 +338,7 @@ class MisskeyBot:
         chat_history.append({"role": "user", "content": text})
         if not chat_history or chat_history[0].get("role") != "system":
             chat_history.insert(0, {"role": "system", "content": self.system_prompt})
-        reply = await self.deepseek.generate_chat_response(
+        reply = await self.openai.generate_chat_response(
             chat_history, **self._ai_config
         )
         logger.debug("生成聊天回复成功")
@@ -468,7 +468,7 @@ class MisskeyBot:
             datetime.now(timezone.utc).timestamp() // 60
         )
         full_prompt = f"[{timestamp_min}] {plugin_prompt}{prompt}"
-        return await self.deepseek.generate_post(
+        return await self.openai.generate_post(
             full_prompt, system_prompt, **(ai_config or self._ai_config)
         )
 
@@ -487,6 +487,6 @@ class MisskeyBot:
     @property
     def _ai_config(self) -> Dict[str, Any]:
         return {
-            "max_tokens": self.config.get(ConfigKeys.DEEPSEEK_MAX_TOKENS),
-            "temperature": self.config.get(ConfigKeys.DEEPSEEK_TEMPERATURE),
+            "max_tokens": self.config.get(ConfigKeys.OPENAI_MAX_TOKENS),
+            "temperature": self.config.get(ConfigKeys.OPENAI_TEMPERATURE),
         }
