@@ -3,11 +3,7 @@
 <h1>Misskey AI</h1>
 
 一只 Python 实现的 Misskey 机器人<br>
-使用 OpenAI 兼容的 AI 模型生成内容发帖或与用户互动<br>
-支持兼容 OpenAI API 架构的其他模型<br>
-目前运行在：[oreeke.com/@ai](https://oreeke.com/@ai)
-
-<br>
+正运行在：[oreeke.com/@ai](https://oreeke.com/@ai)
 
 <a href="https://www.python.org/downloads">
     <img alt="python 3.11+" src="https://img.shields.io/badge/python-3.11+-3776ab.svg?style=for-the-badge&labelColor=303030"></a>
@@ -18,16 +14,36 @@
 
 </div>
 
-## 快速开始
+## 简介
 
-### `1` 克隆仓库
+### 主要功能
+
+- 使用 OpenAI API 兼容性模型生成内容
+  - [OpenAI](https://platform.openai.com/docs/overview)
+  - [DeepSeek](https://api-docs.deepseek.com/)（默认）
+  - [Gemini](https://ai.google.dev/gemini-api/docs/openai)
+  - [Claude](https://docs.anthropic.com/en/api/openai-sdk)
+  - [Ollama](https://ollama.com/blog/openai-compatibility)
+  - ...
+- 自定义系统提示（性格）和发帖提示
+- 根据已设置的周期和可见性自动发帖
+- 实时响应用户提及（@）和聊天
+- 利用插件系统添加自己需要的额外功能
+  - [example](./plugins/example)
+  - [topics](./plugins/topics)
+  - [weather](./plugins/weather)
+  - ...
+
+## 开始
+
+### 克隆仓库
 
 ```bash
 git clone https://github.com/oreeke/misskey-ai.git
 cd misskey-ai
 ```
 
-### `2` 部署方式
+### 部署方式
 
 #### `a` 手动安装
 
