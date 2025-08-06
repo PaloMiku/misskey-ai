@@ -45,11 +45,11 @@ class Config(IConfigProvider):
         env_mappings = {
             "MISSKEY_INSTANCE_URL": (ConfigKeys.MISSKEY_INSTANCE_URL, str),
             "MISSKEY_ACCESS_TOKEN": (ConfigKeys.MISSKEY_ACCESS_TOKEN, str),
-            "DEEPSEEK_API_KEY": (ConfigKeys.DEEPSEEK_API_KEY, str),
-            "DEEPSEEK_MODEL": (ConfigKeys.DEEPSEEK_MODEL, str),
-            "DEEPSEEK_API_BASE": (ConfigKeys.DEEPSEEK_API_BASE, str),
-            "DEEPSEEK_MAX_TOKENS": (ConfigKeys.DEEPSEEK_MAX_TOKENS, int),
-            "DEEPSEEK_TEMPERATURE": (ConfigKeys.DEEPSEEK_TEMPERATURE, float),
+            "OPENAI_API_KEY": (ConfigKeys.OPENAI_API_KEY, str),
+            "OPENAI_MODEL": (ConfigKeys.OPENAI_MODEL, str),
+            "OPENAI_API_BASE": (ConfigKeys.OPENAI_API_BASE, str),
+            "OPENAI_MAX_TOKENS": (ConfigKeys.OPENAI_MAX_TOKENS, int),
+            "OPENAI_TEMPERATURE": (ConfigKeys.OPENAI_TEMPERATURE, float),
             "BOT_SYSTEM_PROMPT": (ConfigKeys.BOT_SYSTEM_PROMPT, str),
             "BOT_AUTO_POST_ENABLED": (ConfigKeys.BOT_AUTO_POST_ENABLED, bool),
             "BOT_AUTO_POST_INTERVAL": (ConfigKeys.BOT_AUTO_POST_INTERVAL, int),
@@ -131,11 +131,11 @@ class Config(IConfigProvider):
         builtin_defaults = {
             ConfigKeys.MISSKEY_INSTANCE_URL: None,
             ConfigKeys.MISSKEY_ACCESS_TOKEN: None,
-            ConfigKeys.DEEPSEEK_API_KEY: None,
-            ConfigKeys.DEEPSEEK_MODEL: "deepseek-chat",
-            ConfigKeys.DEEPSEEK_API_BASE: "https://api.deepseek.com/v1",
-            ConfigKeys.DEEPSEEK_MAX_TOKENS: 1000,
-            ConfigKeys.DEEPSEEK_TEMPERATURE: 0.8,
+            ConfigKeys.OPENAI_API_KEY: None,
+            ConfigKeys.OPENAI_MODEL: "deepseek-chat",
+            ConfigKeys.OPENAI_API_BASE: "https://api.deepseek.com/v1",
+            ConfigKeys.OPENAI_MAX_TOKENS: 1000,
+            ConfigKeys.OPENAI_TEMPERATURE: 0.8,
             ConfigKeys.BOT_SYSTEM_PROMPT: None,
             ConfigKeys.BOT_AUTO_POST_ENABLED: True,
             ConfigKeys.BOT_AUTO_POST_INTERVAL: 180,
@@ -161,9 +161,9 @@ class Config(IConfigProvider):
         required_configs = [
             (ConfigKeys.MISSKEY_INSTANCE_URL, "Misskey 实例 URL"),
             (ConfigKeys.MISSKEY_ACCESS_TOKEN, "Misskey 访问令牌"),
-            (ConfigKeys.DEEPSEEK_API_KEY, "DeepSeek API 密钥"),
-            (ConfigKeys.DEEPSEEK_MODEL, "DeepSeek 模型名称"),
-            (ConfigKeys.DEEPSEEK_API_BASE, "DeepSeek API 端点"),
+            (ConfigKeys.OPENAI_API_KEY, "OpenAI API 密钥"),
+            (ConfigKeys.OPENAI_MODEL, "OpenAI 模型名称"),
+            (ConfigKeys.OPENAI_API_BASE, "OpenAI API 端点"),
         ]
         for config_key, desc in required_configs:
             value = self.get(config_key)

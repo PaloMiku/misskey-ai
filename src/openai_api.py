@@ -20,31 +20,31 @@ from .constants import API_MAX_RETRIES, API_TIMEOUT, REQUEST_TIMEOUT
 from .interfaces import ITextGenerator
 from .utils import retry_async
 
-__all__ = ("DeepSeekAPI",)
+__all__ = ("OpenAIAPI",)
 
 
-class DeepSeekAPI(ITextGenerator):
+class OpenAIAPI(ITextGenerator):
     def __init__(
         self,
         api_key: str,
-        model: str = "deepseek-chat",
+        model: str = "gpt-4.1-mini",
         api_base: Optional[str] = None,
     ):
         self.api_key = api_key
         self.model = model
-        self.api_base = api_base or "https://api.deepseek.com/v1"
+        self.api_base = api_base or "https://api.openai.com/v1"
         try:
             self.client = openai.OpenAI(
                 api_key=self.api_key, base_url=self.api_base, timeout=API_TIMEOUT
             )
             self._initialized = False
         except (ValueError, TypeError, OSError) as e:
-            logger.error(f"创建 DeepSeek API 客户端失败: {e}")
+            logger.error(f"创建 OpenAI API 客户端失败: {e}")
             raise APIConnectionError() from e
 
     async def initialize(self) -> None:
         if not self._initialized:
-            logger.info(f"DeepSeek API 客户端初始化完成: {self.api_base}")
+            logger.info(f"OpenAI API 客户端初始化完成: {self.api_base}")
             self._initialized = True
 
     @retry_async(
@@ -97,7 +97,7 @@ class DeepSeekAPI(ITextGenerator):
         if not generated_text:
             raise APIConnectionError()
         logger.debug(
-            f"DeepSeek API {call_type}调用成功，生成内容长度: {len(generated_text)}"
+            f"OpenAI API {call_type}调用成功，生成内容长度: {len(generated_text)}"
         )
         return generated_text
 
@@ -111,7 +111,7 @@ class DeepSeekAPI(ITextGenerator):
     async def close(self):
         if getattr(self, "client", None):
             self.client.close()
-            logger.debug("DeepSeek API 客户端连接已关闭")
+            logger.debug("OpenAI API 客户端连接已关闭")
 
     def _build_messages(
         self, prompt: str, system_prompt: Optional[str] = None
