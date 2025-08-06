@@ -57,7 +57,7 @@ misskey:
   access_token: "your_access_token_here"            # Misskey 访问令牌
 
 openai:
-  api_key: "your_openai_api_key_here"               # OpenAI API 密钥
+  api_key: "your_api_key_here"                      # OpenAI API 密钥
   model: "deepseek-chat"                            # 使用的模型名称
   api_base: "https://api.deepseek.com/v1"           # OpenAI API 端点
   max_tokens: 1000                                  # 最大生成 token 数
@@ -132,7 +132,7 @@ systemctl start misskey-ai.service
 ```yaml
 MISSKEY_INSTANCE_URL=https://misskey.example.com           # Misskey 实例 URL
 MISSKEY_ACCESS_TOKEN=your_access_token_here                # Misskey 访问令牌
-OPENAI_API_KEY=your_openai_api_key_here                    # OpenAI API 密钥
+OPENAI_API_KEY=your_api_key_here                           # OpenAI API 密钥
 OPENAI_MODEL=deepseek-chat                                 # 使用的模型名称
 OPENAI_API_BASE=https://api.deepseek.com/v1                # OpenAI API 端点
 OPENAI_MAX_TOKENS=1000                                     # OpenAI 最大生成 token 数
