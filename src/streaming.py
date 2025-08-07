@@ -53,6 +53,12 @@ class StreamingClient(IStreamingClient):
     def on_message(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
         self._add_event_handler("message", handler)
 
+    def on_reaction(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
+        self._add_event_handler("reaction", handler)
+
+    def on_follow(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
+        self._add_event_handler("follow", handler)
+
     def _add_event_handler(self, event_type: str, handler: Callable) -> None:
         self.event_handlers.setdefault(event_type, []).append(handler)
 
@@ -230,7 +236,7 @@ class StreamingClient(IStreamingClient):
             return
         channel_info = self.channels[channel_id]
         channel_type = channel_info["type"]
-        event_data = body.get("body", {})
+        event_data = body.get("body", {}) or {}
         event_type = event_data.get("type")
         event_id = event_data.get("id")
         if not event_type and (
@@ -289,7 +295,13 @@ class StreamingClient(IStreamingClient):
     async def _handle_main_channel_event(
         self, event_type: str, event_body: Dict[str, Any], event_data: Dict[str, Any]
     ) -> None:
-        handler_map = {"mention": "mention", "reply": "mention", "chat": "message"}
+        handler_map = {
+            "mention": "mention",
+            "reply": "mention",
+            "chat": "message",
+            "reaction": "reaction",
+            "follow": "follow",
+        }
         if event_type in handler_map:
             await self._call_handlers(handler_map[event_type], event_data)
         else:

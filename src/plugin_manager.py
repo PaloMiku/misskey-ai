@@ -157,6 +157,12 @@ class PluginManager:
     async def on_message(self, message_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         return await self.call_plugin_hook("on_message", message_data)
 
+    async def on_reaction(self, reaction_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        return await self.call_plugin_hook("on_reaction", reaction_data)
+
+    async def on_follow(self, follow_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        return await self.call_plugin_hook("on_follow", follow_data)
+
     async def on_auto_post(self) -> List[Dict[str, Any]]:
         return await self.call_plugin_hook("on_auto_post")
 

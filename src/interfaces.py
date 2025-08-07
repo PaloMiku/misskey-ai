@@ -45,6 +45,14 @@ class IStreamingClient(ABC):
     def on_message(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
         pass
 
+    @abstractmethod
+    def on_reaction(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
+        pass
+
+    @abstractmethod
+    def on_follow(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
+        pass
+
 
 class ITextGenerator(ABC):
     @abstractmethod

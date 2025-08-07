@@ -125,6 +125,8 @@ class MisskeyBot:
             self.streaming = StreamingClient(instance_url, access_token)
             self.streaming.on_mention(self._handle_mention)
             self.streaming.on_message(self._handle_message)
+            self.streaming.on_reaction(self._handle_reaction)
+            self.streaming.on_follow(self._handle_follow)
             await self.streaming.connect_once()
             self.runtime.add_task("streaming", self.streaming.connect())
         except (ValueError, OSError) as e:
@@ -278,6 +280,26 @@ class MisskeyBot:
                 )
         except (APIConnectionError, APIRateLimitError, OSError) as e:
             logger.error(f"发送错误回复失败: {e}")
+
+    async def _handle_reaction(self, reaction: Dict[str, Any]) -> None:
+        username = extract_username(reaction)
+        note_id = reaction.get("note", {}).get("id", "unknown")
+        reaction_type = reaction.get("reaction", "unknown")
+        logger.info(f"用户 @{username} 对帖子 {note_id} 做出反应: {reaction_type}")
+        logger.debug(f"反应数据: {json.dumps(reaction, ensure_ascii=False, indent=2)}")
+        try:
+            await self.plugin_manager.on_reaction(reaction)
+        except (ValueError, OSError) as e:
+            logger.error(f"处理反应事件时出错: {e}")
+
+    async def _handle_follow(self, follow: Dict[str, Any]) -> None:
+        username = extract_username(follow)
+        logger.info(f"用户 @{username} 关注了 @{self.bot_username}")
+        logger.debug(f"关注数据: {json.dumps(follow, ensure_ascii=False, indent=2)}")
+        try:
+            await self.plugin_manager.on_follow(follow)
+        except (ValueError, OSError) as e:
+            logger.error(f"处理关注事件时出错: {e}")
 
     async def _handle_message(self, message: Dict[str, Any]) -> None:
         if not self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_ENABLED):

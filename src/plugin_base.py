@@ -80,6 +80,14 @@ class PluginBase(IPlugin):
     ) -> Optional[Dict[str, Any]]:
         return None
 
+    async def on_reaction(
+        self, _reaction_data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        return None
+
+    async def on_follow(self, _follow_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        return None
+
     async def on_auto_post(self) -> Optional[Dict[str, Any]]:
         return None
 
