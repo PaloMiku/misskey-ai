@@ -121,7 +121,7 @@ class Config(IConfigProvider):
             builtin_default = self._get_builtin_default(key)
             if default is not None:
                 return default
-            elif builtin_default is not None:
+            if builtin_default is not None:
                 return builtin_default
             else:
                 logger.error(f"配置文件格式错误: {e}")
