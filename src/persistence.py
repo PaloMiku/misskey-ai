@@ -125,12 +125,12 @@ class PersistenceManager:
             async with conn.execute(query, params) as cursor:
                 if fetch_type == "all":
                     return await cursor.fetchall()
-                elif fetch_type == "one":
+                if fetch_type == "one":
                     return await cursor.fetchone()
-                elif fetch_type == "insert":
+                if fetch_type == "insert":
                     await conn.commit()
                     return cursor.lastrowid
-                elif fetch_type == "update":
+                if fetch_type == "update":
                     await conn.commit()
                     return cursor.rowcount
         except aiosqlite.Error as e:

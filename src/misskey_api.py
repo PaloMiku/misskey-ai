@@ -35,7 +35,8 @@ class MisskeyAPI(IAPIClient):
         return False
 
     async def close(self) -> None:
-        logger.debug("Misskey API 客户端连接已关闭")
+        await self.transport.close_session(silent=True)
+        logger.debug("Misskey API 客户端已关闭")
 
     @property
     def session(self):
@@ -49,10 +50,10 @@ class MisskeyAPI(IAPIClient):
         if status == HTTP_UNAUTHORIZED:
             logger.error(f"API 认证失败: {endpoint}")
             raise AuthenticationError()
-        elif status == HTTP_FORBIDDEN:
+        if status == HTTP_FORBIDDEN:
             logger.error(f"API 权限不足: {endpoint}")
             raise AuthenticationError()
-        elif status == HTTP_TOO_MANY_REQUESTS:
+        if status == HTTP_TOO_MANY_REQUESTS:
             logger.warning(f"API 频率限制: {endpoint}")
             raise APIRateLimitError()
         return self._is_retryable_error(status)

@@ -43,6 +43,7 @@ class StreamingClient(IStreamingClient):
     async def close(self) -> None:
         await self.disconnect()
         await self._close_websocket()
+        await self.transport.close_session(silent=True)
         self.processed_events.clear()
         logger.debug("Streaming 客户端已关闭")
 

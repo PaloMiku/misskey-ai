@@ -111,7 +111,7 @@ class OpenAIAPI(ITextGenerator):
     async def close(self):
         if getattr(self, "client", None):
             self.client.close()
-            logger.debug("OpenAI API 客户端连接已关闭")
+            logger.debug("OpenAI API 客户端已关闭")
 
     def _build_messages(
         self, prompt: str, system_prompt: Optional[str] = None

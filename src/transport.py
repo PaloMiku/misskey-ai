@@ -39,7 +39,7 @@ class TCPClient:
             )
         return self.__session
 
-    async def close_session(self) -> None:
+    async def close_session(self, *, silent: bool = False) -> None:
         if self.__session and not self.__session.closed:
             try:
                 await self.__session.close()
@@ -51,7 +51,8 @@ class TCPClient:
             except (OSError, RuntimeError) as e:
                 logger.warning(f"关闭连接器时出错: {e}")
         self.__session = self.__connector = None
-        logger.debug("TCP 会话已关闭")
+        if not silent:
+            logger.debug("TCP 会话已关闭")
 
     async def ws_connect(self, url: str, *, compress: int = 0) -> Any:
         try:

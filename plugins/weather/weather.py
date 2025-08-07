@@ -97,6 +97,8 @@ class WeatherPlugin(PluginBase):
 
     async def _get_weather(self, city: str) -> Optional[str]:
         try:
+            if not self.session or self.session.closed:
+                return None
             coordinates = await self._get_coordinates(city)
             if not coordinates:
                 return f"抱歉，找不到城市 '{city}' 的位置信息。"
@@ -120,6 +122,8 @@ class WeatherPlugin(PluginBase):
 
     async def _get_coordinates(self, city: str) -> Optional[tuple]:
         try:
+            if not self.session or self.session.closed:
+                return None
             params = {"q": city, "limit": 1, "appid": self.api_key}
             async with self.session.get(self.geocoding_url, params=params) as response:
                 if response.status != 200:
