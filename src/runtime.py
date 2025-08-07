@@ -9,10 +9,10 @@ from loguru import logger
 if TYPE_CHECKING:
     from .bot import MisskeyBot
 
-__all__ = ("BotState",)
+__all__ = ("BotRuntime",)
 
 
-class BotState:
+class BotRuntime:
     def __init__(
         self,
         bot: MisskeyBot,

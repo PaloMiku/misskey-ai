@@ -7,10 +7,10 @@ from loguru import logger
 from .constants import API_TIMEOUT, WS_TIMEOUT
 from .exceptions import ClientConnectorError
 
-__all__ = ("HTTPClient", "HTTPSession")
+__all__ = ("TCPClient", "ClientSession")
 
 
-class HTTPClient:
+class TCPClient:
     def __init__(self) -> None:
         self.__session: Optional[aiohttp.ClientSession] = None
         self.__connector: Optional[aiohttp.TCPConnector] = None
@@ -45,15 +45,13 @@ class HTTPClient:
                 await self.__session.close()
             except (OSError, RuntimeError, aiohttp.ClientError) as e:
                 logger.warning(f"关闭会话时出错: {e}")
-
         if self.__connector and not self.__connector.closed:
             try:
                 self.__connector.close()
             except (OSError, RuntimeError) as e:
                 logger.warning(f"关闭连接器时出错: {e}")
-
         self.__session = self.__connector = None
-        logger.debug("HTTP 会话已关闭")
+        logger.debug("TCP 会话已关闭")
 
     async def ws_connect(self, url: str, *, compress: int = 0) -> Any:
         try:
@@ -66,11 +64,11 @@ class HTTPClient:
                 compress=compress,
             )
         except aiohttp.ClientConnectorError as e:
-            logger.error(f"HTTP 客户端连接失败: {e}")
+            logger.error(f"TCP 客户端连接失败: {e}")
             raise ClientConnectorError()
 
     def set_token(self, token: str) -> None:
         self.token = token
 
 
-HTTPSession: HTTPClient = HTTPClient()
+ClientSession: TCPClient = TCPClient()

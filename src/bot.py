@@ -20,14 +20,14 @@ from .exceptions import (
     AuthenticationError,
     ConfigurationError,
 )
-from .http_client import HTTPSession
 from .interfaces import IAPIClient, IStreamingClient, ITextGenerator
 from .misskey_api import MisskeyAPI
 from .openai_api import OpenAIAPI
 from .persistence import PersistenceManager
 from .plugin_manager import PluginManager
-from .state import BotState
+from .runtime import BotRuntime
 from .streaming import StreamingClient
+from .transport import ClientSession
 from .utils import extract_user_id, extract_username, get_memory_usage
 
 __all__ = ("MisskeyBot",)
@@ -61,7 +61,7 @@ class MisskeyBot:
             raise ConfigurationError() from e
         self.persistence = PersistenceManager(config.get(ConfigKeys.DB_PATH))
         self.plugin_manager = PluginManager(config, persistence=self.persistence)
-        self.state = BotState(self)
+        self.runtime = BotRuntime(self)
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
         self.bot_user_id = None
         self.bot_username = None
@@ -76,11 +76,11 @@ class MisskeyBot:
         return False
 
     async def start(self) -> None:
-        if self.state.running:
+        if self.runtime.running:
             logger.warning("机器人已在运行中")
             return
         logger.info("启动服务组件...")
-        self.state.running = True
+        self.runtime.running = True
         await self._initialize_services()
         await self._setup_scheduler()
         await self._setup_streaming()
@@ -102,7 +102,7 @@ class MisskeyBot:
 
     async def _setup_scheduler(self) -> None:
         cron_jobs = [
-            (self.state.reset_daily_counters, 0),
+            (self.runtime.reset_daily_counters, 0),
             (self.persistence.vacuum, 2),
         ]
         for func, hour in cron_jobs:
@@ -126,17 +126,17 @@ class MisskeyBot:
             self.streaming.on_mention(self._handle_mention)
             self.streaming.on_message(self._handle_message)
             await self.streaming.connect_once()
-            self.state.add_task("streaming", self.streaming.connect())
+            self.runtime.add_task("streaming", self.streaming.connect())
         except (ValueError, OSError) as e:
             logger.error(f"设置 Streaming 连接失败: {e}")
             raise
 
     async def stop(self) -> None:
-        if not self.state.running:
+        if not self.runtime.running:
             logger.warning("机器人已停止")
             return
         logger.info("停止服务组件...")
-        self.state.running = False
+        self.runtime.running = False
         try:
             await self.plugin_manager.on_shutdown()
             await self.plugin_manager.cleanup_plugins()
@@ -145,11 +145,11 @@ class MisskeyBot:
                 and self.scheduler._eventloop is not None
             ):
                 self.scheduler.shutdown(wait=False)
-            await self.state.cleanup_tasks()
+            await self.runtime.cleanup_tasks()
             await self.streaming.close()
             await self.misskey.close()
             await self.openai.close()
-            await HTTPSession.close_session()
+            await ClientSession.close_session()
             await self.persistence.close()
         except (OSError, ValueError) as e:
             logger.error(f"停止机器人时出错: {e}")
@@ -374,14 +374,14 @@ class MisskeyBot:
             return []
 
     async def _auto_post(self) -> None:
-        if not self.state.running or not self._check_auto_post_limits():
+        if not self.runtime.running or not self._check_auto_post_limits():
             return
         try:
             max_posts = self.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
 
             def log_post_success(post_content: str) -> None:
                 logger.info(f"自动发帖成功: {self._format_log_text(post_content)}")
-                logger.info(f"今日发帖计数: {self.state.posts_today}/{max_posts}")
+                logger.info(f"今日发帖计数: {self.runtime.posts_today}/{max_posts}")
 
             plugin_results = await self.plugin_manager.on_auto_post()
             if not await self._try_plugin_auto_post_with_results(
@@ -401,7 +401,7 @@ class MisskeyBot:
 
     def _check_auto_post_limits(self) -> bool:
         max_posts = self.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
-        if self.state.posts_today >= max_posts:
+        if self.runtime.posts_today >= max_posts:
             logger.debug(f"今日发帖数量已达上限 ({max_posts})，跳过自动发帖")
             return False
         return True
@@ -416,8 +416,8 @@ class MisskeyBot:
                     "visibility", self.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
                 )
                 await self.misskey.create_note(post_content, visibility=visibility)
-                self.state.posts_today += 1
-                self.state.last_auto_post_time = datetime.now(timezone.utc)
+                self.runtime.posts_today += 1
+                self.runtime.last_auto_post_time = datetime.now(timezone.utc)
                 log_post_success(post_content)
                 return True
         return False
@@ -450,8 +450,8 @@ class MisskeyBot:
             return
         visibility = self.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
         await self.misskey.create_note(post_content, visibility=visibility)
-        self.state.posts_today += 1
-        self.state.last_auto_post_time = datetime.now(timezone.utc)
+        self.runtime.posts_today += 1
+        self.runtime.last_auto_post_time = datetime.now(timezone.utc)
         log_post_success(post_content)
 
     async def _generate_post_with_plugin(

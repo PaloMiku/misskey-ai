@@ -39,4 +39,4 @@ class WebSocketReconnectError(WebSocketConnectionError):
 
 
 class ClientConnectorError(MisskeyBotError):
-    """HTTP 客户端连接器错误"""
+    """TCP 客户端连接器错误"""

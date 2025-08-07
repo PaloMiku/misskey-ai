@@ -13,8 +13,8 @@ from .constants import (
     RETRYABLE_HTTP_CODES,
 )
 from .exceptions import APIConnectionError, APIRateLimitError, AuthenticationError
-from .http_client import HTTPSession
 from .interfaces import IAPIClient
+from .transport import ClientSession
 from .utils import retry_async
 
 __all__ = ("MisskeyAPI",)
@@ -24,8 +24,8 @@ class MisskeyAPI(IAPIClient):
     def __init__(self, instance_url: str, access_token: str):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token
-        self.http_client = HTTPSession
-        self.http_client.set_token(access_token)
+        self.transport = ClientSession
+        self.transport.set_token(access_token)
 
     async def __aenter__(self):
         return self
@@ -39,7 +39,7 @@ class MisskeyAPI(IAPIClient):
 
     @property
     def session(self):
-        return self.http_client.session
+        return self.transport.session
 
     def _is_retryable_error(self, status_code: int) -> bool:
         return status_code in RETRYABLE_HTTP_CODES

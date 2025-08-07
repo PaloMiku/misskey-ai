@@ -10,8 +10,8 @@ from loguru import logger
 
 from .constants import MAX_CACHE, RECEIVE_TIMEOUT
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
-from .http_client import HTTPSession
 from .interfaces import IStreamingClient
+from .transport import ClientSession
 
 __all__ = ("ChannelType", "StreamingClient")
 
@@ -25,7 +25,7 @@ class StreamingClient(IStreamingClient):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token
         self.ws_connection: Optional[aiohttp.ClientWebSocketResponse] = None
-        self.http_client = HTTPSession
+        self.transport = ClientSession
         self.channels: Dict[str, Dict[str, Any]] = {}
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.processed_events = LRUCache(maxsize=MAX_CACHE)
@@ -62,7 +62,7 @@ class StreamingClient(IStreamingClient):
         while True:
             try:
                 await self.connect_once(channels)
-                await self.listen_messages()
+                await self._listen_messages()
             except WebSocketConnectionError:
                 if not self.should_reconnect:
                     break
@@ -154,7 +154,7 @@ class StreamingClient(IStreamingClient):
         ws_url = f"{base_ws_url}/streaming?i={self.access_token}"
         safe_url = f"{base_ws_url}/streaming"
         try:
-            self.ws_connection = await self.http_client.ws_connect(ws_url)
+            self.ws_connection = await self.transport.ws_connect(ws_url)
             logger.info(f"WebSocket 连接成功: {safe_url}")
         except Exception:
             await self._cleanup_failed_connection()
@@ -162,7 +162,7 @@ class StreamingClient(IStreamingClient):
             logger.debug("WebSocket 连接错误详情", exc_info=True)
             raise WebSocketConnectionError()
 
-    async def listen_messages(self) -> None:
+    async def _listen_messages(self) -> None:
         while self.running:
             if not self._ws_available:
                 raise WebSocketReconnectError()
