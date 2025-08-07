@@ -123,9 +123,8 @@ class Config(IConfigProvider):
                 return default
             if builtin_default is not None:
                 return builtin_default
-            else:
-                logger.error(f"配置文件格式错误: {e}")
-                return None
+            logger.error(f"配置文件格式错误: {e}")
+            return None
 
     def _get_builtin_default(self, key: str) -> Any:
         builtin_defaults = {
