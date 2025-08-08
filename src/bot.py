@@ -172,8 +172,17 @@ class MisskeyBot:
             APIRateLimitError,
             AuthenticationError,
             OSError,
-        ):
-            await self._handle_mention_error(mention_data)
+        ) as e:
+            logger.error(f"处理提及时出错: {e}")
+            try:
+                if mention_data["username"] and mention_data["reply_target_id"]:
+                    error_message = self._handle_error(e)
+                    await self.misskey.create_note(
+                        text=f"@{mention_data['username']}\n{error_message}",
+                        reply_id=mention_data["reply_target_id"],
+                    )
+            except (APIConnectionError, APIRateLimitError, OSError) as e:
+                logger.error(f"发送错误回复失败: {e}")
 
     def _parse_mention_data(self, note: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -248,38 +257,17 @@ class MisskeyBot:
         return False
 
     async def _generate_ai_mention_response(self, mention_data: Dict[str, Any]) -> None:
-        try:
-            reply = await self.openai.generate_reply(
-                mention_data["text"], self.system_prompt, **self._ai_config
-            )
-            logger.debug("生成提及回复成功")
-            formatted_reply = f"@{mention_data['username']}\n{reply}"
-            await self.misskey.create_note(
-                formatted_reply, reply_id=mention_data["reply_target_id"]
-            )
-            logger.info(
-                f"已回复 @{mention_data['username']}: {self._format_log_text(formatted_reply)}"
-            )
-        except (APIRateLimitError, APIConnectionError, AuthenticationError) as e:
-            logger.error(f"生成或发送回复时出错: {e}")
-            error_message = self._handle_error(e, "生成提及回复")
-            await self._send_error_reply(
-                mention_data["username"],
-                mention_data["reply_target_id"],
-                error_message,
-            )
-
-    async def _handle_mention_error(self, mention_data: Dict[str, Any]) -> None:
-        logger.error("处理提及时出错")
-        try:
-            if mention_data["username"] and mention_data["reply_target_id"]:
-                await self._send_error_reply(
-                    mention_data["username"],
-                    mention_data["reply_target_id"],
-                    DEFAULT_ERROR_MESSAGE,
-                )
-        except (APIConnectionError, APIRateLimitError, OSError) as e:
-            logger.error(f"发送错误回复失败: {e}")
+        reply = await self.openai.generate_reply(
+            mention_data["text"], self.system_prompt, **self._ai_config
+        )
+        logger.debug("生成提及回复成功")
+        formatted_reply = f"@{mention_data['username']}\n{reply}"
+        await self.misskey.create_note(
+            formatted_reply, reply_id=mention_data["reply_target_id"]
+        )
+        logger.info(
+            f"已回复 @{mention_data['username']}: {self._format_log_text(formatted_reply)}"
+        )
 
     async def _handle_reaction(self, reaction: Dict[str, Any]) -> None:
         username = extract_username(reaction)
@@ -319,6 +307,13 @@ class MisskeyBot:
             OSError,
         ) as e:
             logger.error(f"处理聊天时出错: {e}")
+            try:
+                user_id = extract_user_id(message)
+                if user_id:
+                    error_message = self._handle_error(e)
+                    await self.misskey.send_message(user_id, error_message)
+            except (APIConnectionError, APIRateLimitError, OSError) as e:
+                logger.error(f"发送错误回复失败: {e}")
 
     async def _process_chat_message(
         self, message: Dict[str, Any], message_id: str
@@ -367,16 +362,6 @@ class MisskeyBot:
         await self.misskey.send_message(user_id, reply)
         logger.info(f"已回复 @{username}: {self._format_log_text(reply)}")
         chat_history.append({"role": "assistant", "content": reply})
-
-    async def _send_error_reply(
-        self, username: str, note_id: str, message: str
-    ) -> None:
-        try:
-            await self.misskey.create_note(
-                text=f"@{username}\n{message}", reply_id=note_id
-            )
-        except (APIConnectionError, APIRateLimitError, OSError) as e:
-            logger.error(f"发送错误回复失败: {e}")
 
     async def _get_chat_history(
         self, user_id: str, limit: int = None
@@ -494,9 +479,8 @@ class MisskeyBot:
             full_prompt, system_prompt, **(ai_config or self._ai_config)
         )
 
-    def _handle_error(self, error: Exception, context: str = "") -> str:
+    def _handle_error(self, error: Exception) -> str:
         error_type = type(error).__name__
-        logger.error(f"错误类型: {error_type}, 上下文: {context}, 详情: {str(error)}")
         return ERROR_MESSAGES.get(error_type, DEFAULT_ERROR_MESSAGE)
 
     def _format_log_text(self, text: str, max_length: int = 50) -> str:
