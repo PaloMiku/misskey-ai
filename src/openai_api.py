@@ -27,11 +27,11 @@ class OpenAIAPI:
         self,
         api_key: str,
         model: str = "gpt-4.1-mini",
-        api_base: Optional[str] = None,
+        api_base: str = "https://api.openai.com/v1",
     ):
         self.api_key = api_key
         self.model = model
-        self.api_base = api_base or "https://api.openai.com/v1"
+        self.api_base = api_base
         try:
             self.client = openai.OpenAI(
                 api_key=self.api_key, base_url=self.api_base, timeout=API_TIMEOUT
@@ -60,8 +60,8 @@ class OpenAIAPI:
     async def _call_api_common(
         self,
         messages: List[Dict[str, str]],
-        max_tokens: int,
-        temperature: float,
+        max_tokens: Optional[int],
+        temperature: Optional[float],
         call_type: str,
     ) -> str:
         try:
@@ -78,7 +78,10 @@ class OpenAIAPI:
             raise ValueError() from e
 
     async def _make_api_request(
-        self, messages: List[Dict[str, str]], max_tokens: int, temperature: float
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: Optional[int],
+        temperature: Optional[float],
     ):
         return await asyncio.wait_for(
             asyncio.to_thread(
@@ -125,8 +128,8 @@ class OpenAIAPI:
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
-        max_tokens: int = 1000,
-        temperature: float = 0.8,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
     ) -> str:
         messages = self._build_messages(prompt, system_prompt)
         return await self._call_api_common(
@@ -136,30 +139,10 @@ class OpenAIAPI:
     async def generate_chat(
         self,
         messages: List[Dict[str, str]],
-        max_tokens: int = 1000,
-        temperature: float = 0.8,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
     ) -> str:
         result = await self._call_api_common(
             messages, max_tokens, temperature, "多轮对话"
         )
         return result.strip()
-
-    async def generate_post(
-        self,
-        prompt: str,
-        system_prompt: str,
-        max_tokens: int,
-        temperature: float,
-    ) -> str:
-        return await self.generate_text(prompt, system_prompt, max_tokens, temperature)
-
-    async def generate_reply(
-        self,
-        original_text: str,
-        system_prompt: str,
-        max_tokens: int,
-        temperature: float,
-    ) -> str:
-        return await self.generate_text(
-            original_text, system_prompt, max_tokens, temperature
-        )

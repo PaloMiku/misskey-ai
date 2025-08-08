@@ -240,7 +240,7 @@ class MisskeyBot:
         return False
 
     async def _generate_ai_mention_response(self, mention_data: Dict[str, Any]) -> None:
-        reply = await self.openai.generate_reply(
+        reply = await self.openai.generate_text(
             mention_data["text"], self.system_prompt, **self._ai_config
         )
         logger.debug("生成提及回复成功")
@@ -450,7 +450,7 @@ class MisskeyBot:
             datetime.now(timezone.utc).timestamp() // 60
         )
         full_prompt = f"[{timestamp_min}] {plugin_prompt}{prompt}"
-        return await self.openai.generate_post(
+        return await self.openai.generate_text(
             full_prompt, system_prompt, **(ai_config or self._ai_config)
         )
 
