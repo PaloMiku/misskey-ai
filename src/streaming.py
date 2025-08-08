@@ -146,8 +146,6 @@ class StreamingClient(IStreamingClient):
                         await self.connect_channel(channel_type)
                     except ValueError as e:
                         logger.warning(f"未知的频道类型 {channel}: {e}")
-                elif isinstance(channel, ChannelType):
-                    await self.connect_channel(channel)
         else:
             await self.connect_channel(ChannelType.MAIN)
         if self._first_connection:
@@ -287,10 +285,6 @@ class StreamingClient(IStreamingClient):
     ) -> None:
         if channel_type == ChannelType.MAIN:
             await self._handle_main_channel_event(event_type, event_body, event_data)
-        else:
-            logger.debug(
-                f"收到未知频道的事件: {channel_type.value} - {event_type}"
-            )  # RESERVED
 
     async def _handle_main_channel_event(
         self, event_type: str, event_body: Dict[str, Any], event_data: Dict[str, Any]
