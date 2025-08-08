@@ -174,15 +174,7 @@ class MisskeyBot:
             OSError,
         ) as e:
             logger.error(f"处理提及时出错: {e}")
-            try:
-                if mention_data["username"] and mention_data["reply_target_id"]:
-                    error_message = self._handle_error(e)
-                    await self.misskey.create_note(
-                        text=f"@{mention_data['username']}\n{error_message}",
-                        reply_id=mention_data["reply_target_id"],
-                    )
-            except (APIConnectionError, APIRateLimitError, OSError) as e:
-                logger.error(f"发送错误回复失败: {e}")
+            await self._handle_error(e, mention_data=mention_data)
 
     def _parse_mention_data(self, note: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -307,13 +299,7 @@ class MisskeyBot:
             OSError,
         ) as e:
             logger.error(f"处理聊天时出错: {e}")
-            try:
-                user_id = extract_user_id(message)
-                if user_id:
-                    error_message = self._handle_error(e)
-                    await self.misskey.send_message(user_id, error_message)
-            except (APIConnectionError, APIRateLimitError, OSError) as e:
-                logger.error(f"发送错误回复失败: {e}")
+            await self._handle_error(e, message=message)
 
     async def _process_chat_message(
         self, message: Dict[str, Any], message_id: str
@@ -479,9 +465,25 @@ class MisskeyBot:
             full_prompt, system_prompt, **(ai_config or self._ai_config)
         )
 
-    def _handle_error(self, error: Exception) -> str:
+    async def _handle_error(
+        self,
+        error: Exception,
+        mention_data: Dict[str, Any] = None,
+        message: Dict[str, Any] = None,
+    ) -> None:
         error_type = type(error).__name__
-        return ERROR_MESSAGES.get(error_type, DEFAULT_ERROR_MESSAGE)
+        error_message = ERROR_MESSAGES.get(error_type, DEFAULT_ERROR_MESSAGE)
+        try:
+            if mention_data:
+                await self.misskey.create_note(
+                    text=f"@{mention_data['username']}\n{error_message}",
+                    reply_id=mention_data["reply_target_id"],
+                )
+            elif message:
+                user_id = extract_user_id(message)
+                await self.misskey.send_message(user_id, error_message)
+        except (APIConnectionError, APIRateLimitError, OSError) as e:
+            logger.error(f"发送错误回复失败: {e}")
 
     def _format_log_text(self, text: str, max_length: int = 50) -> str:
         return (
