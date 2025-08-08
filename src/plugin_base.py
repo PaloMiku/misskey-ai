@@ -6,7 +6,6 @@ from typing import Any, Callable, Dict, Optional
 
 from loguru import logger
 
-from .interfaces import IPlugin
 from .utils import extract_user_id, extract_username
 
 __all__ = ("PluginBase", "PluginContext")
@@ -26,7 +25,7 @@ class PluginContext:
         self.utils_provider = utils_provider or {}
 
 
-class PluginBase(IPlugin):
+class PluginBase:
     def __init__(
         self, config_or_context, utils_provider: Optional[Dict[str, Callable]] = None
     ):

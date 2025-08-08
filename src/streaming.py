@@ -10,7 +10,6 @@ from loguru import logger
 
 from .constants import MAX_CACHE, RECEIVE_TIMEOUT
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
-from .interfaces import IStreamingClient
 from .transport import ClientSession
 
 __all__ = ("ChannelType", "StreamingClient")
@@ -20,7 +19,7 @@ class ChannelType(Enum):
     MAIN = "main"
 
 
-class StreamingClient(IStreamingClient):
+class StreamingClient:
     def __init__(self, instance_url: str, access_token: str):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token

@@ -20,7 +20,6 @@ from .exceptions import (
     AuthenticationError,
     ConfigurationError,
 )
-from .interfaces import IAPIClient, IStreamingClient, ITextGenerator
 from .misskey_api import MisskeyAPI
 from .openai_api import OpenAIAPI
 from .persistence import PersistenceManager
@@ -34,23 +33,15 @@ __all__ = ("MisskeyBot",)
 
 
 class MisskeyBot:
-    def __init__(
-        self,
-        config: Config,
-        text_generator: Optional[ITextGenerator] = None,
-        api_client: Optional[IAPIClient] = None,
-        streaming_client: Optional[IStreamingClient] = None,
-    ):
+    def __init__(self, config: Config):
         self.config = config
         self.startup_time = datetime.now(timezone.utc)
         try:
             instance_url = config.get(ConfigKeys.MISSKEY_INSTANCE_URL)
             access_token = config.get(ConfigKeys.MISSKEY_ACCESS_TOKEN)
-            self.misskey = api_client or MisskeyAPI(instance_url, access_token)
-            self.streaming = streaming_client or StreamingClient(
-                instance_url, access_token
-            )
-            self.openai = text_generator or OpenAIAPI(
+            self.misskey = MisskeyAPI(instance_url, access_token)
+            self.streaming = StreamingClient(instance_url, access_token)
+            self.openai = OpenAIAPI(
                 config.get(ConfigKeys.OPENAI_API_KEY),
                 config.get(ConfigKeys.OPENAI_MODEL),
                 config.get(ConfigKeys.OPENAI_API_BASE),
@@ -341,9 +332,7 @@ class MisskeyBot:
         chat_history.append({"role": "user", "content": text})
         if not chat_history or chat_history[0].get("role") != "system":
             chat_history.insert(0, {"role": "system", "content": self.system_prompt})
-        reply = await self.openai.generate_chat_response(
-            chat_history, **self._ai_config
-        )
+        reply = await self.openai.generate_chat(chat_history, **self._ai_config)
         logger.debug("生成聊天回复成功")
         await self.misskey.send_message(user_id, reply)
         logger.info(f"已回复 @{username}: {self._format_log_text(reply)}")

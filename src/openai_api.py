@@ -17,13 +17,12 @@ from openai import (
 )
 
 from .constants import API_MAX_RETRIES, API_TIMEOUT, REQUEST_TIMEOUT
-from .interfaces import ITextGenerator
 from .utils import retry_async
 
 __all__ = ("OpenAIAPI",)
 
 
-class OpenAIAPI(ITextGenerator):
+class OpenAIAPI:
     def __init__(
         self,
         api_key: str,
@@ -134,7 +133,7 @@ class OpenAIAPI(ITextGenerator):
             messages, max_tokens, temperature, "单轮文本"
         )
 
-    async def generate_chat_response(
+    async def generate_chat(
         self,
         messages: List[Dict[str, str]],
         max_tokens: int = 1000,

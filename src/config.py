@@ -11,12 +11,11 @@ from loguru import logger
 
 from .constants import ConfigKeys
 from .exceptions import ConfigurationError
-from .interfaces import IConfigProvider
 
 __all__ = ("Config",)
 
 
-class Config(IConfigProvider):
+class Config:
     def __init__(self, config_path: Optional[str] = None):
         self.config_path = config_path or os.environ.get("CONFIG_PATH", "config.yaml")
         self.config: Dict[str, Any] = {}

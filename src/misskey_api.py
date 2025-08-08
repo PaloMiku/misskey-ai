@@ -13,14 +13,13 @@ from .constants import (
     RETRYABLE_HTTP_CODES,
 )
 from .exceptions import APIConnectionError, APIRateLimitError, AuthenticationError
-from .interfaces import IAPIClient
 from .transport import ClientSession
 from .utils import retry_async
 
 __all__ = ("MisskeyAPI",)
 
 
-class MisskeyAPI(IAPIClient):
+class MisskeyAPI:
     def __init__(self, instance_url: str, access_token: str):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token
@@ -42,9 +41,6 @@ class MisskeyAPI(IAPIClient):
     def session(self):
         return self.transport.session
 
-    def _is_retryable_error(self, status_code: int) -> bool:
-        return status_code in RETRYABLE_HTTP_CODES
-
     def _handle_response_status(self, response, endpoint: str):
         status = response.status
         if status == HTTP_UNAUTHORIZED:
@@ -56,7 +52,7 @@ class MisskeyAPI(IAPIClient):
         if status == HTTP_TOO_MANY_REQUESTS:
             logger.warning(f"API 频率限制: {endpoint}")
             raise APIRateLimitError()
-        return self._is_retryable_error(status)
+        return status in RETRYABLE_HTTP_CODES
 
     async def _process_response(self, response, endpoint: str):
         if response.status == HTTP_OK:
@@ -96,11 +92,6 @@ class MisskeyAPI(IAPIClient):
         ) as e:
             logger.error(f"HTTP 请求错误: {e}")
             raise APIConnectionError() from e
-
-    async def request(
-        self, endpoint: str, data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        return await self._make_request(endpoint, data)
 
     def _determine_reply_visibility(
         self, original_visibility: str, visibility: Optional[str]
