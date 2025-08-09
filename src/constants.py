@@ -46,6 +46,7 @@ WS_TIMEOUT = 30
 RECEIVE_TIMEOUT = 30
 
 MAX_CACHE = 500
+CACHE_TTL = 3600
 
 ERROR_MESSAGES = {
     "MisskeyBotError": "抱歉，出现未知问题，请联系管理员。",

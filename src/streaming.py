@@ -5,10 +5,10 @@ from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import aiohttp
-from cachetools import LRUCache
+from cachetools import TTLCache
 from loguru import logger
 
-from .constants import MAX_CACHE, RECEIVE_TIMEOUT
+from .constants import CACHE_TTL, MAX_CACHE, RECEIVE_TIMEOUT
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .transport import ClientSession
 
@@ -27,7 +27,7 @@ class StreamingClient:
         self.transport = ClientSession
         self.channels: Dict[str, Dict[str, Any]] = {}
         self.event_handlers: Dict[str, List[Callable]] = {}
-        self.processed_events = LRUCache(maxsize=MAX_CACHE)
+        self.processed_events = TTLCache(maxsize=MAX_CACHE, ttl=CACHE_TTL)
         self.running = False
         self.should_reconnect = True
         self._first_connection = True
@@ -160,9 +160,9 @@ class StreamingClient:
         try:
             self.ws_connection = await self.transport.ws_connect(ws_url)
             logger.info(f"WebSocket 连接成功: {safe_url}")
-        except Exception:
+        except (aiohttp.ClientError, OSError, asyncio.TimeoutError) as e:
             await self._cleanup_failed_connection()
-            logger.error("WebSocket 连接失败")
+            logger.error(f"WebSocket 连接失败: {e}")
             logger.debug("WebSocket 连接错误详情", exc_info=True)
             raise WebSocketConnectionError()
 
