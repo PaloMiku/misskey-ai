@@ -35,7 +35,6 @@ __all__ = ("MisskeyBot",)
 class MisskeyBot:
     def __init__(self, config: Config):
         self.config = config
-        self.startup_time = datetime.now(timezone.utc)
         try:
             instance_url = config.get(ConfigKeys.MISSKEY_INSTANCE_URL)
             access_token = config.get(ConfigKeys.MISSKEY_ACCESS_TOKEN)
@@ -356,7 +355,8 @@ class MisskeyBot:
             return []
 
     async def _auto_post(self) -> None:
-        if not self.runtime.running or not self._check_auto_post_limits():
+        max_posts = self.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
+        if not self.runtime.running or not self.runtime.check_post_counter(max_posts):
             return
         try:
             max_posts = self.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
@@ -381,13 +381,6 @@ class MisskeyBot:
         ) as e:
             logger.error(f"自动发帖时出错: {e}")
 
-    def _check_auto_post_limits(self) -> bool:
-        max_posts = self.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
-        if self.runtime.posts_today >= max_posts:
-            logger.debug(f"今日发帖数量已达上限 ({max_posts})，跳过自动发帖")
-            return False
-        return True
-
     async def _try_plugin_auto_post_with_results(
         self, plugin_results, log_post_success
     ) -> bool:
@@ -398,8 +391,7 @@ class MisskeyBot:
                     "visibility", self.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
                 )
                 await self.misskey.create_note(post_content, visibility=visibility)
-                self.runtime.posts_today += 1
-                self.runtime.last_auto_post_time = datetime.now(timezone.utc)
+                self.runtime.post_count()
                 log_post_success(post_content)
                 return True
         return False
@@ -432,8 +424,7 @@ class MisskeyBot:
             return
         visibility = self.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
         await self.misskey.create_note(post_content, visibility=visibility)
-        self.runtime.posts_today += 1
-        self.runtime.last_auto_post_time = datetime.now(timezone.utc)
+        self.runtime.post_count()
         log_post_success(post_content)
 
     async def _generate_post_with_plugin(

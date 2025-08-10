@@ -55,6 +55,16 @@ class BotRuntime:
             await asyncio.gather(*self.tasks.values(), return_exceptions=True)
         self.tasks.clear()
 
+    def post_count(self) -> None:
+        self.posts_today += 1
+        self.last_auto_post_time = datetime.now(timezone.utc)
+
+    def check_post_counter(self, max_posts: int) -> bool:
+        if self.posts_today >= max_posts:
+            logger.debug(f"今日发帖数量已达上限 ({max_posts})，跳过自动发帖")
+            return False
+        return True
+
     def reset_daily_counters(self) -> None:
         self.posts_today = 0
         logger.debug("发帖计数器已重置")
