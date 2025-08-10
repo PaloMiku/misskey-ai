@@ -8,9 +8,10 @@ import aiohttp
 from cachetools import TTLCache
 from loguru import logger
 
-from .constants import CACHE_TTL, MAX_CACHE, RECEIVE_TIMEOUT
+from .constants import CACHE_TTL, MAX_CACHE, RECEIVE_TIMEOUT, WS_MAX_RETRIES
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .transport import ClientSession
+from .utils import retry_async
 
 __all__ = ("ChannelType", "StreamingClient")
 
@@ -61,21 +62,22 @@ class StreamingClient:
     def _add_event_handler(self, event_type: str, handler: Callable) -> None:
         self.event_handlers.setdefault(event_type, []).append(handler)
 
+    @retry_async(
+        max_retries=WS_MAX_RETRIES, retryable_exceptions=(WebSocketConnectionError,)
+    )
     async def connect(
         self, channels: Optional[list[str]] = None, *, reconnect: bool = True
     ) -> None:
         self.should_reconnect = reconnect
-        while True:
-            try:
-                await self.connect_once(channels)
-                await self._listen_messages()
-            except WebSocketConnectionError:
-                if not self.should_reconnect:
-                    break
+        try:
+            await self.connect_once(channels)
+            await self._listen_messages()
+        except WebSocketConnectionError:
+            if reconnect:
+                logger.debug("WebSocket 连接异常，重新连接...")
                 self.running = False
                 self.channels.clear()
-                logger.info("WebSocket 连接异常，重新连接...")
-                await asyncio.sleep(3)
+            raise
 
     async def disconnect(self) -> None:
         self.should_reconnect = False

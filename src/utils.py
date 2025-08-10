@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 import psutil
 from loguru import logger
-from tenacity import retry, retry_if_exception_type, stop_after_attempt
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 __all__ = (
     "retry_async",
@@ -19,6 +19,7 @@ __all__ = (
 def retry_async(max_retries=3, retryable_exceptions=None):
     kwargs = {
         "stop": stop_after_attempt(max_retries),
+        "wait": wait_fixed(3),
         "before_sleep": lambda retry_state: logger.info(
             f"第 {retry_state.attempt_number} 次重试..."
         ),
