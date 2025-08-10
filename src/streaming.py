@@ -162,7 +162,7 @@ class StreamingClient:
         try:
             self.ws_connection = await self.transport.ws_connect(ws_url)
             logger.info(f"WebSocket 连接成功: {safe_url}")
-        except (aiohttp.ClientError, OSError, asyncio.TimeoutError) as e:
+        except (aiohttp.ClientError, OSError) as e:
             await self._cleanup_failed_connection()
             logger.error(f"WebSocket 连接失败: {e}")
             logger.debug("WebSocket 连接错误详情", exc_info=True)
