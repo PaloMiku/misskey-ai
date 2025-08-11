@@ -11,7 +11,6 @@ from loguru import logger
 from .constants import CACHE_TTL, MAX_CACHE, RECEIVE_TIMEOUT, WS_MAX_RETRIES
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .transport import ClientSession
-from .utils import retry_async
 
 __all__ = ("ChannelType", "StreamingClient")
 
@@ -62,22 +61,29 @@ class StreamingClient:
     def _add_event_handler(self, event_type: str, handler: Callable) -> None:
         self.event_handlers.setdefault(event_type, []).append(handler)
 
-    @retry_async(
-        max_retries=WS_MAX_RETRIES, retryable_exceptions=(WebSocketConnectionError,)
-    )
     async def connect(
         self, channels: Optional[list[str]] = None, *, reconnect: bool = True
     ) -> None:
         self.should_reconnect = reconnect
-        try:
-            await self.connect_once(channels)
-            await self._listen_messages()
-        except WebSocketConnectionError:
-            if reconnect:
-                logger.debug("WebSocket 连接异常，重新连接...")
+        retry_count = 0
+        while self.should_reconnect and retry_count < WS_MAX_RETRIES:
+            try:
+                await self.connect_once(channels)
+                await self._listen_messages()
+                return
+            except WebSocketConnectionError:
+                retry_count += 1
+                if not reconnect or retry_count >= WS_MAX_RETRIES:
+                    logger.error(
+                        f"WebSocket 连接失败，已达最大重试次数 {WS_MAX_RETRIES}"
+                    )
+                    raise
+                logger.info(
+                    f"WebSocket 连接异常，重新连接... ({retry_count}/{WS_MAX_RETRIES})"
+                )
                 self.running = False
                 self.channels.clear()
-            raise
+                await asyncio.sleep(3)
 
     async def disconnect(self) -> None:
         self.should_reconnect = False
