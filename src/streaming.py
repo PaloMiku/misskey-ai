@@ -172,7 +172,6 @@ class StreamingClient:
         except (aiohttp.ClientError, OSError) as e:
             await self._cleanup_failed_connection()
             logger.error(f"WebSocket 连接失败: {e}")
-            logger.debug("WebSocket 连接错误详情", exc_info=True)
             raise WebSocketConnectionError()
 
     async def _listen_messages(self) -> None:
@@ -323,7 +322,6 @@ class StreamingClient:
                     handler(data)
             except (ValueError, OSError) as e:
                 logger.error(f"事件处理器执行失败 ({event_type}): {e}")
-                logger.debug(f"{event_type} 处理器错误详情", exc_info=True)
 
     def _is_duplicate_event(
         self, event_id: Optional[str], event_type: Optional[str]
