@@ -66,9 +66,10 @@ class StreamingClient:
     ) -> None:
         self.should_reconnect = reconnect
         retry_count = 0
-        while self.should_reconnect and retry_count < WS_MAX_RETRIES:
+        while self.should_reconnect:
             try:
                 await self.connect_once(channels)
+                retry_count = 0
                 await self._listen_messages()
                 return
             except WebSocketConnectionError:
@@ -79,7 +80,7 @@ class StreamingClient:
                     )
                     raise
                 logger.info(
-                    f"WebSocket 连接异常，重新连接... ({retry_count}/{WS_MAX_RETRIES})"
+                    f"WebSocket 连接异常，重新连接... {retry_count}/{WS_MAX_RETRIES}"
                 )
                 self.running = False
                 self.channels.clear()
