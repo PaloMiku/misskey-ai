@@ -223,8 +223,8 @@ class StreamingClient:
     async def _process_message(
         self, data: dict[str, Any], raw_message: Optional[str] = None
     ) -> None:
-        if not data:
-            logger.debug(f"收到空消息，跳过处理: {raw_message}")
+        if not data or not isinstance(data, dict):
+            logger.debug(f"收到无效消息格式，跳过处理: {raw_message}")
             return
         message_type = data.get("type")
         body = data.get("body", {})
