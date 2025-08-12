@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import aiosqlite
 from loguru import logger
@@ -163,13 +160,8 @@ class PersistenceManager:
         params = (plugin_name, key) if key else (plugin_name,)
         return await self._execute(query, params, "update")
 
-    # async def cleanup_old_records(self, days: Optional[int] = None) -> None:
-    #     if days is None:
-    #         days = self.config.get(ConfigKeys.DB_CLEANUP_DAYS)
-    #     pass
-
     # RESERVED
-    async def get_statistics(self) -> Dict[str, Any]:
+    async def get_statistics(self) -> dict[str, Any]:
         today = datetime.now().date()
         query = """
         SELECT

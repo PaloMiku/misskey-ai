@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import aiohttp
 from loguru import logger
@@ -75,8 +75,8 @@ class MisskeyAPI:
         retryable_exceptions=(Exception, APIConnectionError),
     )
     async def _make_request(
-        self, endpoint: str, data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, endpoint: str, data: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         url = f"{self.instance_url}/api/{endpoint}"
 
         payload = {"i": self.access_token}
@@ -124,37 +124,32 @@ class MisskeyAPI:
             logger.warning(f"获取原笔记可见性失败，使用默认设置: {e}")
             return visibility if visibility is not None else "home"
 
-    def _get_default_visibility(self) -> str:
-        return "public"
-
     async def create_note(
         self,
         text: str,
         visibility: Optional[str] = None,
         reply_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if reply_id:
             visibility = await self._get_visibility_for_reply(reply_id, visibility)
         elif visibility is None:
-            visibility = self._get_default_visibility()
-        data = {
-            "text": text,
-            "visibility": visibility,
-            **({"replyId": reply_id} if reply_id else {}),
-        }
+            visibility = "public"
+        data = {"text": text, "visibility": visibility}
+        if reply_id:
+            data["replyId"] = reply_id
         result = await self._make_request("notes/create", data)
         logger.debug(
             f"Misskey 发帖成功，note_id: {result.get('createdNote', {}).get('id', 'unknown')}"
         )
         return result
 
-    async def get_note(self, note_id: str) -> Dict[str, Any]:
+    async def get_note(self, note_id: str) -> dict[str, Any]:
         return await self._make_request("notes/show", {"noteId": note_id})
 
-    async def get_current_user(self) -> Dict[str, Any]:
+    async def get_current_user(self) -> dict[str, Any]:
         return await self._make_request("i", {})
 
-    async def send_message(self, user_id: str, text: str) -> Dict[str, Any]:
+    async def send_message(self, user_id: str, text: str) -> dict[str, Any]:
         result = await self._make_request(
             "chat/messages/create-to-user", {"toUserId": user_id, "text": text}
         )
@@ -163,7 +158,7 @@ class MisskeyAPI:
 
     async def get_messages(
         self, user_id: str, limit: int = 10, since_id: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         data = {"userId": user_id, "limit": limit}
         if since_id:
             data["sinceId"] = since_id

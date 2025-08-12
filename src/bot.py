@@ -1,9 +1,6 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
@@ -110,9 +107,6 @@ class MisskeyBot:
 
     async def _setup_streaming(self) -> None:
         try:
-            instance_url = self.config.get(ConfigKeys.MISSKEY_INSTANCE_URL)
-            access_token = self.config.get(ConfigKeys.MISSKEY_ACCESS_TOKEN)
-            self.streaming = StreamingClient(instance_url, access_token)
             self.streaming.on_mention(self._handle_mention)
             self.streaming.on_message(self._handle_message)
             self.streaming.on_reaction(self._handle_reaction)
@@ -148,7 +142,7 @@ class MisskeyBot:
         finally:
             logger.info("服务组件已停止")
 
-    async def _handle_mention(self, note: Dict[str, Any]) -> None:
+    async def _handle_mention(self, note: dict[str, Any]) -> None:
         if not self.config.get(ConfigKeys.BOT_RESPONSE_MENTION_ENABLED):
             return
         mention_data = self._parse_mention_data(note)
@@ -166,7 +160,7 @@ class MisskeyBot:
             logger.error(f"处理提及时出错: {e}")
             await self._handle_error(e, mention_data=mention_data)
 
-    def _parse_mention_data(self, note: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_mention_data(self, note: dict[str, Any]) -> dict[str, Any]:
         try:
             is_reply_event = note.get("type") == "reply" and "note" in note
             logger.debug(f"提及数据: {json.dumps(note, ensure_ascii=False, indent=2)}")
@@ -205,12 +199,10 @@ class MisskeyBot:
             }
 
     def _is_bot_mentioned(self, text: str) -> bool:
-        if not text or not self.bot_username:
-            return False
-        return f"@{self.bot_username}" in text
+        return bool(text and self.bot_username and f"@{self.bot_username}" in text)
 
     async def _process_mention(
-        self, mention_data: Dict[str, Any], note: Dict[str, Any]
+        self, mention_data: dict[str, Any], note: dict[str, Any]
     ) -> None:
         logger.info(
             f"收到 @{mention_data['username']} 的提及: {self._format_log_text(mention_data['text'])}"
@@ -220,7 +212,7 @@ class MisskeyBot:
         await self._generate_ai_mention_response(mention_data)
 
     async def _try_plugin_mention_response(
-        self, mention_data: Dict[str, Any], note: Dict[str, Any]
+        self, mention_data: dict[str, Any], note: dict[str, Any]
     ) -> bool:
         plugin_results = await self.plugin_manager.on_mention(note)
         for result in plugin_results:
@@ -238,7 +230,7 @@ class MisskeyBot:
                 return True
         return False
 
-    async def _generate_ai_mention_response(self, mention_data: Dict[str, Any]) -> None:
+    async def _generate_ai_mention_response(self, mention_data: dict[str, Any]) -> None:
         reply = await self.openai.generate_text(
             mention_data["text"], self.system_prompt, **self._ai_config
         )
@@ -251,7 +243,7 @@ class MisskeyBot:
             f"已回复 @{mention_data['username']}: {self._format_log_text(formatted_reply)}"
         )
 
-    async def _handle_reaction(self, reaction: Dict[str, Any]) -> None:
+    async def _handle_reaction(self, reaction: dict[str, Any]) -> None:
         username = extract_username(reaction)
         note_id = reaction.get("note", {}).get("id", "unknown")
         reaction_type = reaction.get("reaction", "unknown")
@@ -262,7 +254,7 @@ class MisskeyBot:
         except (ValueError, OSError) as e:
             logger.error(f"处理反应事件时出错: {e}")
 
-    async def _handle_follow(self, follow: Dict[str, Any]) -> None:
+    async def _handle_follow(self, follow: dict[str, Any]) -> None:
         username = extract_username(follow)
         logger.info(f"用户 @{username} 关注了 @{self.bot_username}")
         logger.debug(f"关注数据: {json.dumps(follow, ensure_ascii=False, indent=2)}")
@@ -271,7 +263,7 @@ class MisskeyBot:
         except (ValueError, OSError) as e:
             logger.error(f"处理关注事件时出错: {e}")
 
-    async def _handle_message(self, message: Dict[str, Any]) -> None:
+    async def _handle_message(self, message: dict[str, Any]) -> None:
         if not self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_ENABLED):
             return
         message_id = message.get("id")
@@ -292,7 +284,7 @@ class MisskeyBot:
             await self._handle_error(e, message=message)
 
     async def _process_chat_message(
-        self, message: Dict[str, Any], message_id: str
+        self, message: dict[str, Any], message_id: str
     ) -> None:
         text = message.get("text") or message.get("content") or message.get("body", "")
         user_id = extract_user_id(message)
@@ -309,7 +301,7 @@ class MisskeyBot:
         await self._generate_ai_chat_response(user_id, username, text)
 
     async def _try_plugin_message_response(
-        self, message: Dict[str, Any], user_id: str, username: str
+        self, message: dict[str, Any], user_id: str, username: str
     ) -> bool:
         plugin_results = await self.plugin_manager.on_message(message)
         for result in plugin_results:
@@ -339,7 +331,7 @@ class MisskeyBot:
 
     async def _get_chat_history(
         self, user_id: str, limit: int = None
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         try:
             limit = limit or self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
             messages = await self.misskey.get_messages(user_id, limit=limit)
@@ -359,7 +351,6 @@ class MisskeyBot:
         if not self.runtime.running or not self.runtime.check_post_counter(max_posts):
             return
         try:
-            max_posts = self.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
 
             def log_post_success(post_content: str) -> None:
                 logger.info(f"自动发帖成功: {self._format_log_text(post_content)}")
@@ -448,8 +439,8 @@ class MisskeyBot:
     async def _handle_error(
         self,
         error: Exception,
-        mention_data: Dict[str, Any] = None,
-        message: Dict[str, Any] = None,
+        mention_data: dict[str, Any] = None,
+        message: dict[str, Any] = None,
     ) -> None:
         error_type = type(error).__name__
         error_message = ERROR_MESSAGES.get(error_type, DEFAULT_ERROR_MESSAGE)
@@ -473,7 +464,7 @@ class MisskeyBot:
         )
 
     @property
-    def _ai_config(self) -> Dict[str, Any]:
+    def _ai_config(self) -> dict[str, Any]:
         return {
             "max_tokens": self.config.get(ConfigKeys.OPENAI_MAX_TOKENS),
             "temperature": self.config.get(ConfigKeys.OPENAI_TEMPERATURE),

@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import yaml
 from loguru import logger
@@ -25,7 +22,7 @@ class PluginManager:
     ):
         self.config = config
         self.plugins_dir = Path(plugins_dir)
-        self.plugins: Dict[str, PluginBase] = {}
+        self.plugins: dict[str, PluginBase] = {}
         self.persistence = persistence
 
     async def __aenter__(self):
@@ -52,7 +49,7 @@ class PluginManager:
         enabled_count = sum(plugin.enabled for plugin in self.plugins.values())
         logger.info(f"已发现 {len(self.plugins)} 个插件，{enabled_count} 个已启用")
 
-    def _load_plugin_config(self, plugin_dir: Path) -> Dict[str, Any]:
+    def _load_plugin_config(self, plugin_dir: Path) -> dict[str, Any]:
         config_file = plugin_dir / "config.yaml"
         if not config_file.exists():
             return {"enabled": False}
@@ -64,7 +61,7 @@ class PluginManager:
             return {}
 
     async def _load_plugin(
-        self, plugin_dir: Path, plugin_config: Dict[str, Any]
+        self, plugin_dir: Path, plugin_config: dict[str, Any]
     ) -> None:
         try:
             plugin_file = plugin_dir / f"{plugin_dir.name}.py"
@@ -151,25 +148,25 @@ class PluginManager:
     async def on_startup(self) -> None:
         await self.call_plugin_hook("on_startup")
 
-    async def on_mention(self, mention_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def on_mention(self, mention_data: dict[str, Any]) -> list[dict[str, Any]]:
         return await self.call_plugin_hook("on_mention", mention_data)
 
-    async def on_message(self, message_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def on_message(self, message_data: dict[str, Any]) -> list[dict[str, Any]]:
         return await self.call_plugin_hook("on_message", message_data)
 
-    async def on_reaction(self, reaction_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def on_reaction(self, reaction_data: dict[str, Any]) -> list[dict[str, Any]]:
         return await self.call_plugin_hook("on_reaction", reaction_data)
 
-    async def on_follow(self, follow_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def on_follow(self, follow_data: dict[str, Any]) -> list[dict[str, Any]]:
         return await self.call_plugin_hook("on_follow", follow_data)
 
-    async def on_auto_post(self) -> List[Dict[str, Any]]:
+    async def on_auto_post(self) -> list[dict[str, Any]]:
         return await self.call_plugin_hook("on_auto_post")
 
     async def on_shutdown(self) -> None:
         await self.call_plugin_hook("on_shutdown")
 
-    async def call_plugin_hook(self, hook_name: str, *args, **kwargs) -> List[Any]:
+    async def call_plugin_hook(self, hook_name: str, *args, **kwargs) -> list[Any]:
         results = []
         enabled_plugins = sorted(
             [p for p in self.plugins.values() if p.enabled],
@@ -189,7 +186,7 @@ class PluginManager:
         return results
 
     # RESERVED
-    def get_plugin_info(self) -> List[Dict[str, Any]]:
+    def get_plugin_info(self) -> list[dict[str, Any]]:
         return [plugin.get_info() for plugin in self.plugins.values()]
 
     # RESERVED

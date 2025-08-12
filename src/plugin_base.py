@@ -1,8 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import asyncio
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional
 
 from loguru import logger
 
@@ -15,7 +12,7 @@ class PluginContext:
     def __init__(
         self,
         name: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         persistence_manager=None,
         utils_provider=None,
     ):
@@ -27,7 +24,7 @@ class PluginContext:
 
 class PluginBase:
     def __init__(
-        self, config_or_context, utils_provider: Optional[Dict[str, Callable]] = None
+        self, config_or_context, utils_provider: Optional[dict[str, Callable]] = None
     ):
         if isinstance(config_or_context, PluginContext):
             context = config_or_context
@@ -70,30 +67,30 @@ class PluginBase:
         pass
 
     async def on_mention(
-        self, _mention_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, _mention_data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         return None
 
     async def on_message(
-        self, _message_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, _message_data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         return None
 
     async def on_reaction(
-        self, _reaction_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, _reaction_data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         return None
 
-    async def on_follow(self, _follow_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def on_follow(self, _follow_data: dict[str, Any]) -> Optional[dict[str, Any]]:
         return None
 
-    async def on_auto_post(self) -> Optional[Dict[str, Any]]:
+    async def on_auto_post(self) -> Optional[dict[str, Any]]:
         return None
 
     async def on_shutdown(self) -> None:
         pass
 
-    def get_info(self) -> Dict[str, Any]:
+    def get_info(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "enabled": self.enabled,
@@ -105,11 +102,10 @@ class PluginBase:
         self.enabled = enabled
         logger.info(f"插件 {self.name} {'启用' if enabled else '禁用'}")
 
-    def _extract_username(self, data: Dict[str, Any]) -> str:
+    def _extract_username(self, data: dict[str, Any]) -> str:
         return extract_username(data)
 
-    # RESERVED
-    def _extract_user_id(self, data: Dict[str, Any]) -> Optional[str]:
+    def _extract_user_id(self, data: dict[str, Any]) -> Optional[str]:
         return extract_user_id(data)
 
     def _log_plugin_action(self, action: str, details: str = "") -> None:

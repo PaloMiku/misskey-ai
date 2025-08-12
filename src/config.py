@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 from functools import reduce
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import yaml
 from loguru import logger
@@ -18,7 +15,7 @@ __all__ = ("Config",)
 class Config:
     def __init__(self, config_path: Optional[str] = None):
         self.config_path = config_path or os.environ.get("CONFIG_PATH", "config.yaml")
-        self.config: Dict[str, Any] = {}
+        self.config: dict[str, Any] = {}
 
     async def load(self) -> None:
         config_path = Path(self.config_path)
@@ -62,7 +59,6 @@ class Config:
             "BOT_RESPONSE_CHAT_ENABLED": (ConfigKeys.BOT_RESPONSE_CHAT_ENABLED, bool),
             "BOT_RESPONSE_CHAT_MEMORY": (ConfigKeys.BOT_RESPONSE_CHAT_MEMORY, int),
             "DB_PATH": (ConfigKeys.DB_PATH, str),
-            # "DB_CLEANUP_DAYS": (ConfigKeys.DB_CLEANUP_DAYS, int),
             "LOG_PATH": (ConfigKeys.LOG_PATH, str),
             "LOG_LEVEL": (ConfigKeys.LOG_LEVEL, str),
         }
@@ -117,9 +113,9 @@ class Config:
         try:
             return reduce(lambda d, k: d[k], key.split("."), self.config)
         except (KeyError, TypeError) as e:
-            builtin_default = self._get_builtin_default(key)
             if default is not None:
                 return default
+            builtin_default = self._get_builtin_default(key)
             if builtin_default is not None:
                 return builtin_default
             logger.error(f"配置文件格式错误: {e}")
@@ -144,7 +140,6 @@ class Config:
             ConfigKeys.BOT_RESPONSE_CHAT_ENABLED: True,
             ConfigKeys.BOT_RESPONSE_CHAT_MEMORY: 10,
             ConfigKeys.DB_PATH: "data/misskey_ai.db",
-            # ConfigKeys.DB_CLEANUP_DAYS: 30,
             ConfigKeys.LOG_PATH: "logs/misskey_ai.log",
             ConfigKeys.LOG_LEVEL: "INFO",
         }

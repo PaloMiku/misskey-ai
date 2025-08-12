@@ -1,13 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import aiohttp
 from loguru import logger
 
-from src.plugin_base import PluginBase
+from src import PluginBase
 
 
 class WeatherPlugin(PluginBase):
@@ -38,7 +35,7 @@ class WeatherPlugin(PluginBase):
     async def cleanup(self) -> None:
         await super().cleanup()
 
-    async def on_mention(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def on_mention(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         try:
             note_data = (
                 data.get("note", data) if "note" in data and "type" in data else data
@@ -49,8 +46,8 @@ class WeatherPlugin(PluginBase):
             return None
 
     async def on_message(
-        self, message_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, message_data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         try:
             return await self._process_weather_message(message_data)
         except (ValueError, KeyError) as e:
@@ -58,8 +55,8 @@ class WeatherPlugin(PluginBase):
             return None
 
     async def _process_weather_message(
-        self, data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         text = data.get("text", "")
         if "天气" not in text and "weather" not in text:
             return None
@@ -70,7 +67,7 @@ class WeatherPlugin(PluginBase):
 
     async def _handle_weather_request(
         self, username: str, location_match
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         location = (
             (location_match.group(1) or location_match.group(2) or "").strip()
             if location_match
@@ -141,7 +138,7 @@ class WeatherPlugin(PluginBase):
             logger.error(f"获取城市坐标失败: {e}")
             return None
 
-    def _format_weather_info_v25(self, data: Dict[str, Any], display_name: str) -> str:
+    def _format_weather_info_v25(self, data: dict[str, Any], display_name: str) -> str:
         try:
             main = data["main"]
             temp = round(main["temp"])

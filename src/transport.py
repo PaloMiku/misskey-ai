@@ -1,4 +1,3 @@
-import sys
 from typing import Any, Optional
 
 import aiohttp
@@ -15,8 +14,7 @@ class TCPClient:
         self.__session: Optional[aiohttp.ClientSession] = None
         self.__connector: Optional[aiohttp.TCPConnector] = None
         self.token: Optional[str] = None
-        user_agent = "MisskeyBot/1.0 Python/{0[0]}.{0[1]} aiohttp/{1}"
-        self.user_agent = user_agent.format(sys.version_info, aiohttp.__version__)
+        self.user_agent = "MisskeyBot/1.0 "
         self._default_headers = {
             "Content-Type": "application/json",
             "User-Agent": self.user_agent,

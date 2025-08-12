@@ -1,25 +1,23 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import asyncio
 
-from src.main import main, shutdown
+from src import BotRunner
 
 
-async def handle_shutdown(error_msg: str = None) -> None:
+async def handle_shutdown(runner: BotRunner, error_msg: str = None) -> None:
     if error_msg:
         print(f"\n{error_msg}")
     try:
-        await shutdown()
+        await runner.shutdown()
     except (OSError, ValueError, TypeError) as e:
         print(f"关闭时出错: {e}")
 
 
 if __name__ == "__main__":
+    runner = BotRunner()
     try:
-        asyncio.run(main())
+        asyncio.run(runner.run())
     except KeyboardInterrupt:
-        asyncio.run(handle_shutdown())
+        asyncio.run(handle_shutdown(runner))
         print("\n机器人已停止")
     except (
         OSError,
@@ -29,4 +27,4 @@ if __name__ == "__main__":
         RuntimeError,
         ImportError,
     ) as e:
-        asyncio.run(handle_shutdown(f"启动时出错: {e}"))
+        asyncio.run(handle_shutdown(runner, f"启动时出错: {e}"))

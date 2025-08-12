@@ -1,6 +1,6 @@
 import os
 import platform
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import psutil
 from loguru import logger
@@ -30,7 +30,7 @@ def retry_async(max_retries=3, retryable_exceptions=None):
 
 
 # RESERVED
-def get_system_info() -> Dict[str, Any]:
+def get_system_info() -> dict[str, Any]:
     return {
         "platform": platform.platform(),
         "python_version": platform.python_version(),
@@ -40,7 +40,7 @@ def get_system_info() -> Dict[str, Any]:
     }
 
 
-def get_memory_usage() -> Dict[str, Any]:
+def get_memory_usage() -> dict[str, Any]:
     process = psutil.Process()
     memory_info = process.memory_info()
     mb_factor = 1024 * 1024
@@ -51,14 +51,14 @@ def get_memory_usage() -> Dict[str, Any]:
     }
 
 
-def extract_user_id(message: Dict[str, Any]) -> Optional[str]:
+def extract_user_id(message: dict[str, Any]) -> Optional[str]:
     user_info = message.get("fromUser") or message.get("user")
     if isinstance(user_info, dict):
         return user_info.get("id")
     return message.get("userId") or message.get("fromUserId")
 
 
-def extract_username(message: Dict[str, Any]) -> str:
+def extract_username(message: dict[str, Any]) -> str:
     user_info = message.get("fromUser") or message.get("user", {})
     if isinstance(user_info, dict):
         return user_info.get("username", "unknown")

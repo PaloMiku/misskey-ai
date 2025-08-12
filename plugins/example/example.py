@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from loguru import logger
 
-from src.plugin_base import PluginBase
+from src import PluginBase
 
 
 class ExamplePlugin(PluginBase):
@@ -27,7 +24,7 @@ class ExamplePlugin(PluginBase):
 
     def _create_response(
         self, response_text: str, content_key: str = "response"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         try:
             response = {
                 "handled": True,
@@ -40,8 +37,8 @@ class ExamplePlugin(PluginBase):
             return None
 
     async def on_mention(
-        self, mention_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, mention_data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         if not self.greeting_enabled:
             return None
         try:
@@ -55,8 +52,8 @@ class ExamplePlugin(PluginBase):
         return None
 
     async def on_message(
-        self, message_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, message_data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         if not self.greeting_enabled:
             return None
         try:
@@ -71,7 +68,7 @@ class ExamplePlugin(PluginBase):
             logger.error(f"Example 插件处理消息时出错: {e}")
         return None
 
-    async def on_auto_post(self) -> Optional[Dict[str, Any]]:
+    async def on_auto_post(self) -> Optional[dict[str, Any]]:
         if not self.auto_post_enabled:
             return None
         try:

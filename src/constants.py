@@ -16,7 +16,6 @@ class ConfigKeys:
     BOT_RESPONSE_CHAT_ENABLED = "bot.response.chat_enabled"
     BOT_RESPONSE_CHAT_MEMORY = "bot.response.chat_memory"
     DB_PATH = "db.path"
-    # DB_CLEANUP_DAYS = "db.cleanup_days"
     LOG_PATH = "log.path"
     LOG_LEVEL = "log.level"
 

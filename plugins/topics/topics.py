@@ -1,12 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from loguru import logger
 
-from src.plugin_base import PluginBase
+from src import PluginBase
 
 
 class TopicsPlugin(PluginBase):
@@ -37,7 +34,7 @@ class TopicsPlugin(PluginBase):
     async def cleanup(self) -> None:
         await super().cleanup()
 
-    async def on_auto_post(self) -> Optional[Dict[str, Any]]:
+    async def on_auto_post(self) -> Optional[dict[str, Any]]:
         try:
             topic = await self._get_next_topic()
             return {

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from loguru import logger
 
@@ -22,7 +22,7 @@ class BotRuntime:
         self.loop = loop or asyncio.get_event_loop()
         self.startup_time = datetime.now(timezone.utc)
         self.running = False
-        self.tasks: Dict[str, asyncio.Task] = {}
+        self.tasks: dict[str, asyncio.Task] = {}
         self.posts_today = 0
         self.last_auto_post_time = self.startup_time
 

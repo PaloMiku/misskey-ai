@@ -1,8 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import asyncio
-from typing import Dict, List, Optional
+from typing import Optional
 
 import openai
 from loguru import logger
@@ -59,7 +56,7 @@ class OpenAIAPI:
     )
     async def _call_api_common(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         max_tokens: Optional[int],
         temperature: Optional[float],
         call_type: str,
@@ -72,14 +69,14 @@ class OpenAIAPI:
             raise ValueError() from e
         except AuthenticationError as e:
             logger.error(f"API 认证失败: {e}")
-            raise AuthenticationError() from e
+            raise
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"API 响应数据格式错误: {e}")
             raise ValueError() from e
 
     async def _make_api_request(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         max_tokens: Optional[int],
         temperature: Optional[float],
     ):
@@ -117,7 +114,7 @@ class OpenAIAPI:
 
     def _build_messages(
         self, prompt: str, system_prompt: Optional[str] = None
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt.strip()})
@@ -138,11 +135,10 @@ class OpenAIAPI:
 
     async def generate_chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
     ) -> str:
-        result = await self._call_api_common(
+        return await self._call_api_common(
             messages, max_tokens, temperature, "多轮对话"
         )
-        return result.strip()
