@@ -30,6 +30,7 @@
 - 实时响应用户提及（@）和聊天
 - 利用插件系统添加丰富的额外功能
   - [Example](./plugins/example)
+  - [Command](./plugins/command)
   - [Topics](./plugins/topics)
   - [Weather](./plugins/weather)
   - ...
