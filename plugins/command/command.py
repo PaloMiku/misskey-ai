@@ -231,9 +231,8 @@ class CommandPlugin(PluginBase):
                 if self._authenticate_user(user_id, password):
                     self._log_plugin_action("用户认证成功", f"@{username} ({user_id})")
                     return self._create_response("认证成功！现在可以使用 ^ 命令了。")
-                else:
-                    self._log_plugin_action("用户认证失败", f"@{username} ({user_id})")
-                    return self._create_response("认证失败，密码错误。")
+                self._log_plugin_action("用户认证失败", f"@{username} ({user_id})")
+                return self._create_response("认证失败，密码错误。")
             if not self._is_authenticated(user_id):
                 return self._create_response("请先使用 ^command <密码> 进行认证。")
             parts = command_text.split(maxsplit=1)
