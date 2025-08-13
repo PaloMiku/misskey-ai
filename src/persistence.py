@@ -165,10 +165,12 @@ class PersistenceManager:
         table_stats = {}
         for table_row in tables_result:
             table_name = table_row[0]
-            count_query = f"SELECT COUNT(*) FROM {table_name}"
+            if not table_name.replace("_", "").isalnum():
+                continue
+            count_query = "SELECT COUNT(*) FROM " + table_name
             count_result = await self._execute(count_query)
-            size_query = f"SELECT SUM(pgsize) FROM dbstat WHERE name='{table_name}'"
-            size_result = await self._execute(size_query)
+            size_query = "SELECT SUM(pgsize) FROM dbstat WHERE name = ?"
+            size_result = await self._execute(size_query, (table_name,))
             size_bytes = size_result[0] if size_result[0] else 0
             table_stats[table_name] = {
                 "row_count": count_result[0],
