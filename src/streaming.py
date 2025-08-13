@@ -127,7 +127,6 @@ class StreamingClient:
         logger.info(f"已连接频道: {channel_type.value} (ID: {channel_id})")
         return channel_id
 
-    # RESERVED
     async def disconnect_channel(self, channel_type: ChannelType) -> None:
         channels_to_remove = [
             ch_id

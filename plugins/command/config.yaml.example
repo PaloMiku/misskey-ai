@@ -1,0 +1,7 @@
+# Command 插件配置文件
+
+enabled: true                     # 是否启用插件
+priority: 999                     # 插件优先级（数字越大优先级越高）
+
+password: "your_password"         # 认证密码
+session_timeout: 3600             # 认证会话超时时间（秒）

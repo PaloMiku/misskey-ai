@@ -1,4 +1,4 @@
-# 示例插件配置文件
+# Example 插件配置文件
 
 enabled: true                    # 插件总开关
 priority: 0                      # 插件优先级（数字越大优先级越高）

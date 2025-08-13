@@ -29,7 +29,6 @@ def retry_async(max_retries=3, retryable_exceptions=None):
     return retry(**kwargs)
 
 
-# RESERVED
 def get_system_info() -> dict[str, Any]:
     return {
         "platform": platform.platform(),

@@ -118,6 +118,8 @@ class PluginManager:
             config=plugin_config,
             persistence_manager=self.persistence,
             utils_provider=utils_provider,
+            plugin_manager=self,
+            global_config=self.config,
         )
         return plugin_class(context)
 
@@ -185,24 +187,25 @@ class PluginManager:
                 logger.error(f"调用插件 {plugin.name} 的 {hook_name} hook 时出错: {e}")
         return results
 
-    # RESERVED
     def get_plugin_info(self) -> list[dict[str, Any]]:
         return [plugin.get_info() for plugin in self.plugins.values()]
 
-    # RESERVED
     def get_plugin(self, name: str) -> Optional[PluginBase]:
         return self.plugins.get(name)
 
-    # RESERVED
+    def _find_plugin_by_name(self, name: str) -> Optional[PluginBase]:
+        return self.plugins.get(name) or next(
+            (p for n, p in self.plugins.items() if n.lower() == name.lower()), None
+        )
+
     def enable_plugin(self, name: str) -> bool:
-        if plugin := self.plugins.get(name):
+        if plugin := self._find_plugin_by_name(name):
             plugin.set_enabled(True)
             return True
         return False
 
-    # RESERVED
     def disable_plugin(self, name: str) -> bool:
-        if plugin := self.plugins.get(name):
+        if plugin := self._find_plugin_by_name(name):
             plugin.set_enabled(False)
             return True
         return False

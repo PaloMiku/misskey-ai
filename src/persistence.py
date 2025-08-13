@@ -152,7 +152,6 @@ class PersistenceManager:
             "update",
         )
 
-    # RESERVED
     async def delete_plugin_data(self, plugin_name: str, key: str = None) -> int:
         query = "DELETE FROM plugin_data WHERE plugin_name = ?" + (
             " AND key = ?" if key else ""
@@ -160,22 +159,24 @@ class PersistenceManager:
         params = (plugin_name, key) if key else (plugin_name,)
         return await self._execute(query, params, "update")
 
-    # RESERVED
-    async def get_statistics(self) -> dict[str, Any]:
-        today = datetime.now().date()
-        query = """
-        SELECT
-            (SELECT COUNT(*) FROM plugin_data) as total_plugin_data,
-            (SELECT COUNT(*) FROM plugin_data WHERE DATE(updated_at) = ?) as today_plugin_data
-        """
-        result = await self._execute(query, (today,))
-        db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
-        return {
-            "total_plugin_data": result[0],
-            "today_plugin_data": result[1],
-            "db_size_bytes": db_size,
-            "db_size_mb": round(db_size / 1024 / 1024, 2),
-        }
+    async def get_table_stats(self) -> dict[str, Any]:
+        tables_query = "SELECT name FROM sqlite_master WHERE type='table'"
+        tables_result = await self._execute(tables_query, (), "all")
+        table_stats = {}
+        for table_row in tables_result:
+            table_name = table_row[0]
+            count_query = f"SELECT COUNT(*) FROM {table_name}"
+            count_result = await self._execute(count_query)
+            size_query = f"SELECT SUM(pgsize) FROM dbstat WHERE name='{table_name}'"
+            size_result = await self._execute(size_query)
+            size_bytes = size_result[0] if size_result[0] else 0
+            table_stats[table_name] = {
+                "row_count": count_result[0],
+                "size_bytes": size_bytes,
+                "size_kb": round(size_bytes / 1024, 2),
+                "size_mb": round(size_bytes / 1024 / 1024, 2),
+            }
+        return table_stats
 
     async def vacuum(self) -> None:
         conn = await self._pool.get_connection()

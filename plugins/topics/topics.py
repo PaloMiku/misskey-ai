@@ -24,7 +24,7 @@ class TopicsPlugin(PluginBase):
             await self._load_topics()
             await self._initialize_plugin_data()
             self._log_plugin_action(
-                "初始化完成", f"加载了 {len(self.topics)} 个主题关键词"
+                "初始化完成", f"装载 {len(self.topics)} 个主题关键词"
             )
             return True
         except (OSError, ValueError) as e:
