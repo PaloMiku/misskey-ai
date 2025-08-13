@@ -9,17 +9,11 @@ __all__ = ("PluginBase", "PluginContext")
 
 
 class PluginContext:
-    def __init__(
-        self,
-        name: str,
-        config: dict[str, Any],
-        persistence_manager=None,
-        utils_provider=None,
-    ):
+    def __init__(self, name: str, config: dict[str, Any], **context_objects):
         self.name = name
         self.config = config
-        self.persistence_manager = persistence_manager
-        self.utils_provider = utils_provider or {}
+        for key, value in context_objects.items():
+            setattr(self, key, value)
 
 
 class PluginBase:
@@ -30,12 +24,18 @@ class PluginBase:
             context = config_or_context
             self.config = context.config
             self.name = context.name
-            self.persistence_manager = context.persistence_manager
-            self._utils = context.utils_provider
+            for attr_name in dir(context):
+                if not attr_name.startswith("_") and attr_name not in (
+                    "name",
+                    "config",
+                ):
+                    setattr(self, attr_name, getattr(context, attr_name))
+            if not hasattr(self, "utils_provider"):
+                self.utils_provider = {}
+            self._utils = getattr(self, "utils_provider", {})
         else:
             self.config = config_or_context
             self.name = self.__class__.__name__
-            self.persistence_manager = None
             self._utils = utils_provider or {}
         self.enabled = self.config.get("enabled", False)
         self.priority = self.config.get("priority", 0)
