@@ -79,7 +79,7 @@ class StreamingClient:
                         f"WebSocket 连接失败，已达最大重试次数 {WS_MAX_RETRIES}"
                     )
                     raise
-                logger.info(
+                logger.debug(
                     f"WebSocket 连接异常，重新连接... {retry_count}/{WS_MAX_RETRIES}"
                 )
                 self.running = False
@@ -124,7 +124,7 @@ class StreamingClient:
             raise WebSocketConnectionError()
         await self.ws_connection.send_json(message)
         self.channels[channel_id] = {"type": channel_type, "params": params or {}}
-        logger.info(f"已连接频道: {channel_type.value} (ID: {channel_id})")
+        logger.debug(f"已连接频道: {channel_type.value} (ID: {channel_id})")
         return channel_id
 
     async def disconnect_channel(self, channel_type: ChannelType) -> None:
@@ -166,7 +166,7 @@ class StreamingClient:
         safe_url = f"{base_ws_url}/streaming"
         try:
             self.ws_connection = await self.transport.ws_connect(ws_url)
-            logger.info(f"WebSocket 连接成功: {safe_url}")
+            logger.debug(f"WebSocket 连接成功: {safe_url}")
         except (aiohttp.ClientError, OSError) as e:
             await self._cleanup_failed_connection()
             logger.error(f"WebSocket 连接失败: {e}")
