@@ -1,4 +1,3 @@
-import time
 from typing import Any, Optional
 
 import aiosqlite
@@ -13,10 +12,8 @@ class CommandPlugin(PluginBase):
 
     def __init__(self, context):
         super().__init__(context)
-        self.password = self.config.get("password")
-        self.session_timeout = self.config.get("session_timeout", 3600)
+        self.allowed_users = self.config.get("allowed_users", [])
         self.commands = self.config.get("commands", {})
-        self.authenticated_users = {}
         self._setup_default_commands()
 
     def _setup_default_commands(self):
@@ -58,20 +55,8 @@ class CommandPlugin(PluginBase):
         self._log_plugin_action("初始化完成", f"支持 {len(self.commands)} 个命令")
         return True
 
-    def _is_authenticated(self, user_id: str) -> bool:
-        if user_id not in self.authenticated_users:
-            return False
-        auth_time = self.authenticated_users[user_id]
-        if time.time() - auth_time > self.session_timeout:
-            del self.authenticated_users[user_id]
-            return False
-        return True
-
-    def _authenticate_user(self, user_id: str, password: str) -> bool:
-        is_valid = password == self.password
-        if is_valid:
-            self.authenticated_users[user_id] = time.time()
-        return is_valid
+    def _is_authorized(self, user_id: str, username: str) -> bool:
+        return user_id in self.allowed_users or username in self.allowed_users
 
     def _find_command(self, cmd: str) -> Optional[str]:
         cmd_lower = cmd.lower()
@@ -119,9 +104,9 @@ class CommandPlugin(PluginBase):
         return "\n".join(help_lines)
 
     def _get_status_text(self) -> str:
-        auth_count = len(self.authenticated_users)
         status = "运行中" if health_check() else "异常"
-        return f"机器人状态: {status}\n已认证用户: {auth_count}"
+        allowed_count = len(self.allowed_users)
+        return f"机器人状态: {status}\n授权用户数: {allowed_count}"
 
     def _get_system_info(self) -> str:
         info = get_system_info()
@@ -225,16 +210,9 @@ class CommandPlugin(PluginBase):
             username = self._extract_username(message_data)
             if not user_id:
                 return None
+            if not self._is_authorized(user_id, username):
+                return self._create_response("您没有权限使用命令。")
             command_text = text[1:].strip()
-            if command_text.startswith("command "):
-                password = command_text[8:].strip()
-                if self._authenticate_user(user_id, password):
-                    self._log_plugin_action("用户认证成功", f"@{username} ({user_id})")
-                    return self._create_response("认证成功！现在可以使用 ^ 命令了。")
-                self._log_plugin_action("用户认证失败", f"@{username} ({user_id})")
-                return self._create_response("认证失败，密码错误。")
-            if not self._is_authenticated(user_id):
-                return self._create_response("请先使用 ^command <密码> 进行认证。")
             parts = command_text.split(maxsplit=1)
             command_name = self._find_command(parts[0])
             args = parts[1] if len(parts) > 1 else ""

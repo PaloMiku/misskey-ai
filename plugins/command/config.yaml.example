@@ -3,5 +3,7 @@
 enabled: true                     # 是否启用插件
 priority: 999                     # 插件优先级（数字越大优先级越高）
 
-password: "your_password"         # 认证密码
-session_timeout: 3600             # 认证会话超时时间（秒）
+allowed_users:                    # 允许使用命令的用户列表
+  - "user1"                       # 用户 ID 或用户名
+  - "user2"
+  - "admin"

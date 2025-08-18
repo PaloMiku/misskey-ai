@@ -272,7 +272,7 @@ class MisskeyBot:
             return
         logger.debug(f"聊天数据: {json.dumps(message, ensure_ascii=False, indent=2)}")
         try:
-            await self._process_chat_message(message, message_id)
+            await self._process_chat_message(message)
         except (
             APIConnectionError,
             APIRateLimitError,
@@ -283,15 +283,10 @@ class MisskeyBot:
             logger.error(f"处理聊天时出错: {e}")
             await self._handle_error(e, message=message)
 
-    async def _process_chat_message(
-        self, message: dict[str, Any], message_id: str
-    ) -> None:
+    async def _process_chat_message(self, message: dict[str, Any]) -> None:
         text = message.get("text") or message.get("content") or message.get("body", "")
         user_id = extract_user_id(message)
         username = extract_username(message)
-        logger.debug(
-            f"解析聊天 - ID: {message_id}, 用户 ID: {user_id}, 文本: {self._format_log_text(text)}..."
-        )
         if not (user_id and text):
             logger.debug(f"聊天缺少必要信息 - 用户 ID: {user_id}, 文本: {bool(text)}")
             return
