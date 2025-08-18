@@ -10,7 +10,6 @@ from .constants import (
     HTTP_OK,
     HTTP_TOO_MANY_REQUESTS,
     HTTP_UNAUTHORIZED,
-    RETRYABLE_HTTP_CODES,
 )
 from .exceptions import APIConnectionError, APIRateLimitError, AuthenticationError
 from .transport import ClientSession
@@ -52,7 +51,6 @@ class MisskeyAPI:
         if status == HTTP_TOO_MANY_REQUESTS:
             logger.warning(f"API 频率限制: {endpoint}")
             raise APIRateLimitError()
-        return status in RETRYABLE_HTTP_CODES
 
     async def _process_response(self, response, endpoint: str):
         if response.status == HTTP_OK:
@@ -63,26 +61,22 @@ class MisskeyAPI:
             except json.JSONDecodeError as e:
                 logger.error(f"响应不是有效的 JSON 格式: {e}")
                 raise APIConnectionError()
-
-        is_retryable = self._handle_response_status(response, endpoint)
+        self._handle_response_status(response, endpoint)
         error_text = await response.text()
-        if not is_retryable:
-            logger.error(f"API 请求失败: {response.status} - {error_text}")
+        logger.error(f"API 请求失败: {response.status} - {error_text}")
         raise APIConnectionError()
 
     @retry_async(
         max_retries=API_MAX_RETRIES,
-        retryable_exceptions=(Exception, APIConnectionError),
+        retryable_exceptions=(APIConnectionError, APIRateLimitError),
     )
     async def _make_request(
         self, endpoint: str, data: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
         url = f"{self.instance_url}/api/{endpoint}"
-
         payload = {"i": self.access_token}
         if data:
             payload.update(data)
-
         try:
             async with self.session.post(url, json=payload) as response:
                 return await self._process_response(response, endpoint)
