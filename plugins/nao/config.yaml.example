@@ -1,0 +1,6 @@
+enabled: true
+priority: 50
+api_key: "${SAUCENAO_API_KEY}" 
+# SauceNAO API 密钥，可选，不设置将使用免费额度
+trigger_tag: "#nao"  
+# 触发识图的标签，默认为#nao，可自定义
