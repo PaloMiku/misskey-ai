@@ -139,10 +139,9 @@ class MisskeyAPI:
         reply_id: Optional[str] = None,
         validate_reply: bool = True,
     ) -> dict[str, Any]:
-        if reply_id and validate_reply:
-            if not await self.note_exists(reply_id):
-                logger.warning(f"目标帖子不存在，将创建新帖回复: {reply_id}")
-                reply_id = None
+        if reply_id and validate_reply and not await self.note_exists(reply_id):
+            logger.warning(f"目标帖子不存在，将创建新帖回复: {reply_id}")
+            reply_id = None
         if reply_id:
             visibility = await self._get_visibility_for_reply(reply_id, visibility)
         elif visibility is None:

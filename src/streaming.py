@@ -218,7 +218,7 @@ class StreamingClient:
                 try:
                     message = {"type": "disconnect", "body": {"id": channel_id}}
                     await self.ws_connection.send_json(message)
-                except (OSError, ValueError, ConnectionResetError) as e:
+                except (OSError, ValueError) as e:
                     logger.warning(f"断开频道 {channel_id} 时出错: {e}")
         self.channels.clear()
 

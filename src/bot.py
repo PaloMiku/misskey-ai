@@ -138,7 +138,7 @@ class MisskeyBot:
             await self.openai.close()
             await ClientSession.close_session(silent=True)
             await self.persistence.close()
-        except (OSError, ValueError, RuntimeError, ConnectionResetError) as e:
+        except (OSError, ValueError, RuntimeError) as e:
             logger.error(f"停止机器人时出错: {e}")
         finally:
             logger.info("服务组件已停止")
