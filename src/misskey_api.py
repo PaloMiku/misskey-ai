@@ -6,12 +6,18 @@ from loguru import logger
 
 from .constants import (
     API_MAX_RETRIES,
+    HTTP_BAD_REQUEST,
     HTTP_FORBIDDEN,
     HTTP_OK,
     HTTP_TOO_MANY_REQUESTS,
     HTTP_UNAUTHORIZED,
 )
-from .exceptions import APIConnectionError, APIRateLimitError, AuthenticationError
+from .exceptions import (
+    APIBadRequestError,
+    APIConnectionError,
+    APIRateLimitError,
+    AuthenticationError,
+)
 from .transport import ClientSession
 from .utils import retry_async
 
@@ -42,6 +48,9 @@ class MisskeyAPI:
 
     def _handle_response_status(self, response, endpoint: str):
         status = response.status
+        if status == HTTP_BAD_REQUEST:
+            logger.error(f"API 请求错误: {endpoint}")
+            raise APIBadRequestError()
         if status == HTTP_UNAUTHORIZED:
             logger.error(f"API 认证失败: {endpoint}")
             raise AuthenticationError()
@@ -114,7 +123,12 @@ class MisskeyAPI:
             original_note = await self.get_note(reply_id)
             original_visibility = original_note.get("visibility", "public")
             return self._determine_reply_visibility(original_visibility, visibility)
-        except (APIConnectionError, APIRateLimitError, ValueError) as e:
+        except (
+            APIConnectionError,
+            APIRateLimitError,
+            AuthenticationError,
+            ValueError,
+        ) as e:
             logger.warning(f"获取原笔记可见性失败，使用默认设置: {e}")
             return visibility if visibility is not None else "home"
 
@@ -123,7 +137,12 @@ class MisskeyAPI:
         text: str,
         visibility: Optional[str] = None,
         reply_id: Optional[str] = None,
+        validate_reply: bool = True,
     ) -> dict[str, Any]:
+        if reply_id and validate_reply:
+            if not await self.note_exists(reply_id):
+                logger.warning(f"目标帖子不存在，将创建新帖回复: {reply_id}")
+                reply_id = None
         if reply_id:
             visibility = await self._get_visibility_for_reply(reply_id, visibility)
         elif visibility is None:
@@ -139,6 +158,18 @@ class MisskeyAPI:
 
     async def get_note(self, note_id: str) -> dict[str, Any]:
         return await self._make_request("notes/show", {"noteId": note_id})
+
+    async def note_exists(self, note_id: str) -> bool:
+        try:
+            await self.get_note(note_id)
+            return True
+        except (
+            APIBadRequestError,
+            APIConnectionError,
+            APIRateLimitError,
+            AuthenticationError,
+        ):
+            return False
 
     async def get_current_user(self) -> dict[str, Any]:
         return await self._make_request("i", {})
