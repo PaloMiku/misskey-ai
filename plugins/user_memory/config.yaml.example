@@ -12,3 +12,4 @@ min_keyword_length: 2           # 最短关键词长度
 # 仅在生成个性化回复时附加的系统补充提示
 system_memory_prefix: "请结合以下用户画像做出更个性化、贴合其兴趣与语气的回复。"
 debug_log: false
+ignore_hashtag_messages: true   # 含有 # 的消息整条跳过，不记录不回复，避免干扰其他依赖 hashtag 的插件

@@ -35,6 +35,8 @@ class UserMemoryPlugin(PluginBase):
             "system_memory_prefix", "请结合以下用户画像做出更个性化、贴合其兴趣与语气的回复。"
         )
         self.debug_log = cfg.get("debug_log", False)
+        # 是否忽略含 hashtag 的消息（避免与依赖 #tag 的其他插件冲突）
+        self.ignore_hashtag_messages = cfg.get("ignore_hashtag_messages", True)
         # 统一插件名（PluginContext 已设定 Name=User_memory => capitalize 可能不同）
         self.storage_plugin_name = "UserMemory"  # DB 中使用统一名字
 
@@ -59,7 +61,12 @@ class UserMemoryPlugin(PluginBase):
             text = message_data.get("text") or message_data.get("content") or ""
             if not (user_id and text.strip()):
                 return None
+            if self.ignore_hashtag_messages and self._contains_hashtag(text):
+                if self.debug_log:
+                    logger.debug("[UserMemory] 跳过含 hashtag 的消息: %s", text[:60])
+                return None
             username = self._extract_username(message_data)
+            # 仅记录原文本（不去掉 hashtag；因为含 hashtag 的已被跳过）
             await self._record_user_message(user_id, text)
             if not self.handle_messages:
                 return None
@@ -77,6 +84,10 @@ class UserMemoryPlugin(PluginBase):
             user = note.get("user") or note.get("fromUser") or {}
             user_id = user.get("id") or note.get("userId")
             if not (user_id and text.strip()):
+                return None
+            if self.ignore_hashtag_messages and self._contains_hashtag(text):
+                if self.debug_log:
+                    logger.debug("[UserMemory] 跳过含 hashtag 的提及: %s", text[:60])
                 return None
             username = user.get("username", "unknown")
             await self._record_user_message(user_id, text)
@@ -256,3 +267,9 @@ class UserMemoryPlugin(PluginBase):
 
     def _k_summary(self, uid: str) -> str:
         return f"user:{uid}:summary"
+
+    # -------------------------- 预处理助手 --------------------------
+
+    def _contains_hashtag(self, text: str) -> bool:
+        """检测文本是否含 # / ＃ 任一字符；含则视为 hashtag 信息整条跳过。"""
+        return "#" in text or "＃" in text
