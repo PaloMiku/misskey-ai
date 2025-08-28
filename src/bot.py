@@ -12,6 +12,7 @@ from .constants import (
     ConfigKeys,
 )
 from .exceptions import (
+    APIBadRequestError,
     APIConnectionError,
     APIRateLimitError,
     AuthenticationError,
@@ -135,9 +136,9 @@ class MisskeyBot:
             await self.streaming.close()
             await self.misskey.close()
             await self.openai.close()
-            await ClientSession.close_session()
+            await ClientSession.close_session(silent=True)
             await self.persistence.close()
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError, RuntimeError, ConnectionResetError) as e:
             logger.error(f"停止机器人时出错: {e}")
         finally:
             logger.info("服务组件已停止")
@@ -152,6 +153,7 @@ class MisskeyBot:
             await self._process_mention(mention_data, note)
         except (
             ValueError,
+            APIBadRequestError,
             APIConnectionError,
             APIRateLimitError,
             AuthenticationError,
@@ -222,7 +224,8 @@ class MisskeyBot:
                 if response:
                     formatted_response = f"@{mention_data['username']}\n{response}"
                     await self.misskey.create_note(
-                        formatted_response, reply_id=mention_data["reply_target_id"]
+                        text=formatted_response,
+                        reply_id=mention_data["reply_target_id"],
                     )
                     logger.info(
                         f"插件已回复 @{mention_data['username']}: {self._format_log_text(formatted_response)}"
@@ -237,7 +240,7 @@ class MisskeyBot:
         logger.debug("生成提及回复成功")
         formatted_reply = f"@{mention_data['username']}\n{reply}"
         await self.misskey.create_note(
-            formatted_reply, reply_id=mention_data["reply_target_id"]
+            text=formatted_reply, reply_id=mention_data["reply_target_id"]
         )
         logger.info(
             f"已回复 @{mention_data['username']}: {self._format_log_text(formatted_reply)}"
@@ -274,6 +277,7 @@ class MisskeyBot:
         try:
             await self._process_chat_message(message)
         except (
+            APIBadRequestError,
             APIConnectionError,
             APIRateLimitError,
             AuthenticationError,
@@ -443,12 +447,18 @@ class MisskeyBot:
             if mention_data:
                 await self.misskey.create_note(
                     text=f"@{mention_data['username']}\n{error_message}",
-                    reply_id=mention_data["reply_target_id"],
+                    validate_reply=False,
                 )
             elif message:
                 user_id = extract_user_id(message)
                 await self.misskey.send_message(user_id, error_message)
-        except (APIConnectionError, APIRateLimitError, OSError) as e:
+        except (
+            APIBadRequestError,
+            APIConnectionError,
+            APIRateLimitError,
+            AuthenticationError,
+            OSError,
+        ) as e:
             logger.error(f"发送错误回复失败: {e}")
 
     def _format_log_text(self, text: str, max_length: int = 50) -> str:
