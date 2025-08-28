@@ -1,4 +1,5 @@
 from typing import Any, Optional
+from datetime import datetime, timezone
 
 import aiosqlite
 from loguru import logger
@@ -49,6 +50,10 @@ class CommandPlugin(PluginBase):
                     "description": "清理插件数据 (用法: dbclear <插件名> [键名])",
                     "aliases": ["清理"],
                 },
+                "profile": {
+                    "description": "查看用户画像 (用法: profile [userId])",
+                    "aliases": ["画像", "用户画像", "um"],
+                },
             }
 
     async def initialize(self) -> bool:
@@ -69,7 +74,9 @@ class CommandPlugin(PluginBase):
                 return command_name
         return None
 
-    async def _execute_command(self, command: str, args: str = "") -> str:
+    async def _execute_command(
+        self, command: str, args: str = "", invoking_user_id: str | None = None
+    ) -> str:
         commands = {
             "help": self._get_help_text,
             "status": self._get_status_text,
@@ -80,6 +87,7 @@ class CommandPlugin(PluginBase):
             "disable": lambda: self._disable_plugin(args),
             "dbstats": self._get_db_stats,
             "dbclear": lambda: self._clear_plugin_data(args),
+            "profile": lambda: self._get_user_profile(args, invoking_user_id),
         }
         if command in commands:
             try:
@@ -187,6 +195,56 @@ class CommandPlugin(PluginBase):
         except aiosqlite.Error as e:
             return f"删除数据失败: {str(e)}"
 
+    async def _get_user_profile(
+        self, args: str, invoking_user_id: str | None
+    ) -> str:
+        """查询 UserMemory 插件中指定用户画像。"""
+        if not self.persistence_manager:
+            return "持久化层不可用"
+        target_user = args.strip() if args.strip() else invoking_user_id
+        if not target_user:
+            return "请提供 userId"
+        # 读取 summary 与 stats
+        try:
+            summary = await self.persistence_manager.get_plugin_data(
+                "UserMemory", f"user:{target_user}:summary"
+            )
+            stats_raw = await self.persistence_manager.get_plugin_data(
+                "UserMemory", f"user:{target_user}:stats"
+            )
+        except aiosqlite.Error as e:  # pragma: no cover
+            return f"读取画像失败: {str(e)}"
+        if not (summary or stats_raw):
+            return "未找到该用户画像"
+        count = first_ts = last_ts = None
+        if stats_raw:
+            try:
+                import json
+
+                stats = json.loads(stats_raw)
+                count = stats.get("count")
+                first_ts = stats.get("first_ts")
+                last_ts = stats.get("last_ts")
+            except Exception:  # noqa: BLE001
+                pass
+        def _fmt(ts):
+            try:
+                if not ts:
+                    return "-"
+                return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime(
+                    "%m-%d %H:%M"
+                )
+            except Exception:  # noqa: BLE001
+                return "-"
+        lines = [f"用户ID: {target_user}"]
+        if count is not None:
+            lines.append(f"交互次数: {count}")
+        if first_ts or last_ts:
+            lines.append(f"首次: {_fmt(first_ts)} 最近: {_fmt(last_ts)}")
+        if summary:
+            lines.append(f"画像: {summary}")
+        return "\n".join(lines)
+
     def _create_response(self, response_text: str) -> Optional[dict[str, Any]]:
         try:
             response = {
@@ -218,7 +276,9 @@ class CommandPlugin(PluginBase):
             args = parts[1] if len(parts) > 1 else ""
             if command_name:
                 self._log_plugin_action("执行命令", f"@{username}: ^{command_text}")
-                result = await self._execute_command(command_name, args)
+                result = await self._execute_command(
+                    command_name, args, invoking_user_id=user_id
+                )
                 return self._create_response(result)
             return self._create_response(
                 f"未知命令: {parts[0]}\n使用 ^help 查看可用命令。"

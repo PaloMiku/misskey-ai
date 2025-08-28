@@ -1,0 +1,14 @@
+enabled: true
+priority: 90  # 高优先级以便在默认 AI 回复前拦截
+# 是否由插件直接生成个性化 AI 回复；若关闭则只做记忆更新
+handle_messages: true
+handle_mentions: true
+# 记忆配置
+max_messages_per_user: 30       # 每个用户保留最近多少条消息内容
+summary_interval: 5             # 每累计多少条消息重新生成一次总结
+summary_max_length: 120         # 总结最大字数
+keywords_top_n: 8               # 关键词数量
+min_keyword_length: 2           # 最短关键词长度
+# 仅在生成个性化回复时附加的系统补充提示
+system_memory_prefix: "请结合以下用户画像做出更个性化、贴合其兴趣与语气的回复。"
+debug_log: false
