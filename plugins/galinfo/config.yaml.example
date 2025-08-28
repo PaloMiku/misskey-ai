@@ -22,6 +22,7 @@ auto_post:
   random_delay_minutes: 30  # 随机延迟时间（分钟），在设定时间基础上随机增加0到此值的分钟数
   max_posts_per_day: 4   # 每天最大发帖数量
   use_ai_enhanced_data: false  # 是否使用AI润色后的游戏数据进行发帖生成
+  avoid_repeat: true     # 启用伪随机防重复：在所有缓存游戏轮询一遍前不重复；关闭则使用“最近5个不重复”策略
   
   # 调试功能配置
   debug_enabled: true    # 是否启用调试功能

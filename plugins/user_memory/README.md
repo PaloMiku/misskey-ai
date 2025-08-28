@@ -23,6 +23,7 @@
 | min_keyword_length | 最短关键词长度 | 2 |
 | system_memory_prefix | 附加到系统提示前的额外说明 | 请结合以下用户画像做出更个性化... |
 | debug_log | 是否输出调试日志 | false |
+| ignore_hashtag_messages | 含 # 的消息是否直接忽略（不记录不回复） | true |
 
 ## 工作流程
 

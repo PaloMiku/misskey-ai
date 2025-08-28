@@ -6,7 +6,7 @@ import random
 import re
 import asyncio
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
 from types import SimpleNamespace
 from src.plugin_base import PluginBase
 from src.openai_api import OpenAIAPI
@@ -36,24 +36,81 @@ class APIYm:
 
     async def _get_session(self, headers: Dict[str, str] | None = None) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(headers=headers)
+            timeout = aiohttp.ClientTimeout(total=12)
+            self._session = aiohttp.ClientSession(headers=headers, timeout=timeout)
         elif headers and self._session.headers != headers:  # 保持兼容：若需要不同头部仍创建新 session
             await self._session.close()
-            self._session = aiohttp.ClientSession(headers=headers)
+            timeout = aiohttp.ClientTimeout(total=12)
+            self._session = aiohttp.ClientSession(headers=headers, timeout=timeout)
         return self._session
+
+    async def _fetch_json(
+        self,
+        method: str,
+        url: str,
+        *,
+        session: aiohttp.ClientSession,
+        data: Dict[str, Any] | None = None,
+        retries: int = 2,
+        expect: str = "application/json",
+    ) -> Dict[str, Any]:
+        """统一请求与 JSON 解析，容错常见 ContentType / 解码问题，附带有限重试。
+
+        重试条件：网络异常、JSON 解析异常、非预期 content-type。
+        """
+        last_err: Exception | None = None
+        for attempt in range(retries + 1):
+            try:
+                if method == "GET":
+                    async with session.get(url) as resp:
+                        ct = resp.headers.get("Content-Type", "")
+                        text_body: str | None = None
+                        if expect not in ct:
+                            # 读取文本用于诊断（不抛弃）；尝试仍按 JSON 解析
+                            text_body = await resp.text()
+                        try:
+                            parsed = await resp.json()
+                            return parsed  # 成功
+                        except Exception as je:  # noqa: BLE001
+                            if text_body is None:
+                                text_body = await resp.text()
+                            raise APIServerError(
+                                f"JSON解析失败/ContentType异常 attempt={attempt} ct={ct} snippet={text_body[:120]!r} err={je}"
+                            ) from je
+                else:  # POST
+                    async with session.post(url, data=data) as resp:
+                        ct = resp.headers.get("Content-Type", "")
+                        text_body: str | None = None
+                        if expect not in ct:
+                            text_body = await resp.text()
+                        try:
+                            parsed = await resp.json()
+                            return parsed
+                        except Exception as je:  # noqa: BLE001
+                            if text_body is None:
+                                text_body = await resp.text()
+                            raise APIServerError(
+                                f"JSON解析失败/ContentType异常 attempt={attempt} ct={ct} snippet={text_body[:120]!r} err={je}"
+                            ) from je
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                # 仅在还有重试机会时等待后继续
+                if attempt < retries:
+                    await asyncio.sleep(0.4 * (attempt + 1))
+                    continue
+        # 全部失败
+        raise last_err if last_err else APIServerError("未知错误")
 
     async def get_token(self) -> str:
         tapi = f"{self.api}/oauth/token?"
-        data = {
-            "grant_type": "client_credentials",
-            "client_id": self.cid,
-            "client_secret": self.c_secret,
-            "scope": "public",
-        }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(tapi, data=data) as response:
-                res = await response.json()
-                return res["access_token"]
+        data = {"grant_type": "client_credentials", "client_id": self.cid, "client_secret": self.c_secret, "scope": "public"}
+        # 单独 token 不复用主 session，失败重试更健壮
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
+            res = await self._fetch_json("POST", tapi, session=session, data=data, retries=2)
+            token = res.get("access_token")
+            if not token:
+                raise APIServerError(f"获取 token 失败：返回 {res}")
+            return token
 
     async def header(self, token: str) -> Dict[str, str]:
         return {
@@ -66,50 +123,48 @@ class APIYm:
         keyword_q = quote_keyword(keyword)
         url = f"{self.api}/open/archive/search-game?mode=accurate&keyword={keyword_q}&similarity={similarity}"
         session = await self._get_session(headers=header)
-        async with session.get(url) as response:
-            res: Dict[str, Any] = await response.json()
-            code = res.get("code")
-            if code == 0:
-                gamedata = res.get("data", {}).get("game", {})
-                result = {
-                    "id": gamedata.get("gid"),
-                    "oaid": gamedata.get("developerId"),
-                    "mainimg": gamedata.get("mainImg", "None"),
-                    "name": gamedata.get("name", "None"),
-                    "rd": gamedata.get("releaseDate", "None"),
-                    "rest": gamedata.get("restricted", "None"),
-                    "hc": gamedata.get("haveChinese", False),
-                    "cnname": gamedata.get("chineseName", "None"),
-                    "intro": gamedata.get("introduction", "None"),
-                }
-                return {"if_oainfo": False, "result": result}
-            if code == ErrorCode.PARAM_ERROR:
-                raise APIParamError(
-                    "参数错误，可能是根据关键词搜索不到游戏档案\n在使用游戏简称、汉化名、外号等关键字无法查询到目标内容时，请使用游戏原名（全名+标点+大小写无误）再次尝试，或者使用模糊查找"
-                )
-            raise APIServerError(f"返回错误，返回码code:{code}")
+        res: Dict[str, Any] = await self._fetch_json("GET", url, session=session, retries=1)
+        code = res.get("code")
+        if code == 0:
+            gamedata = res.get("data", {}).get("game", {})
+            result = {
+                "id": gamedata.get("gid"),
+                "oaid": gamedata.get("developerId"),
+                "mainimg": gamedata.get("mainImg", "None"),
+                "name": gamedata.get("name", "None"),
+                "rd": gamedata.get("releaseDate", "None"),
+                "rest": gamedata.get("restricted", "None"),
+                "hc": gamedata.get("haveChinese", False),
+                "cnname": gamedata.get("chineseName", "None"),
+                "intro": gamedata.get("introduction", "None"),
+            }
+            return {"if_oainfo": False, "result": result}
+        if code == ErrorCode.PARAM_ERROR:
+            raise APIParamError(
+                "参数错误，可能是根据关键词搜索不到游戏档案\n在使用游戏简称、汉化名、外号等关键字无法查询到目标内容时，请使用游戏原名（全名+标点+大小写无误）再次尝试，或者使用模糊查找"
+            )
+        raise APIServerError(f"返回错误，返回码code:{code}")
 
     async def search_orgid_mergeinfo(
         self, header: Dict[str, str], gid: int, info: Dict[str, Any], if_oainfo: bool
     ) -> Dict[str, Any]:
         url = f"{self.api}/open/archive?orgId={gid}"
         session = await self._get_session(headers=header)
-        async with session.get(url) as response:
-            res: Dict[str, Any] = await response.json()
-            code = res.get("code")
-            if code == 0:
-                org = res.get("data", {}).get("org", {})
-                if if_oainfo:
-                    return {
-                        "oaname": org.get("name"),
-                        "oacn": org.get("chineseName"),
-                        "intro": org.get("introduction"),
-                        "country": org.get("country"),
-                    }
-                result_oa = info | {"oaname": org.get("name"), "oacn": org.get("chineseName")}
-                result_oa.pop("oaid", None)
-                return result_oa
-            raise APIServerError(f"查询会社信息失败，返回码code:{code}")
+        res: Dict[str, Any] = await self._fetch_json("GET", url, session=session, retries=1)
+        code = res.get("code")
+        if code == 0:
+            org = res.get("data", {}).get("org", {})
+            if if_oainfo:
+                return {
+                    "oaname": org.get("name"),
+                    "oacn": org.get("chineseName"),
+                    "intro": org.get("introduction"),
+                    "country": org.get("country"),
+                }
+            result_oa = info | {"oaname": org.get("name"), "oacn": org.get("chineseName")}
+            result_oa.pop("oaid", None)
+            return result_oa
+        raise APIServerError(f"查询会社信息失败，返回码code:{code}")
 
     async def vague_search_game(
         self, header: Dict[str, str], keyword: str, pageNum: int = 1, pageSize: int = 10
@@ -119,31 +174,30 @@ class APIYm:
             f"{self.api}/open/archive/search-game?mode=list&keyword={keyword_q}&pageNum={pageNum}&pageSize={pageSize}"
         )
         session = await self._get_session(headers=header)
-        async with session.get(url) as response:
-            res: Dict[str, Any] = await response.json()
-            code = res.get("code")
-            if code == 0:
-                result: List[Dict[str, Any]] = res.get("data", {}).get("result", [])
-                if result:
-                    original_keyword = keyword_q.replace("%20", " ").lower()
-                    best_match: Optional[Dict[str, Any]] = None
-                    exact_match: Optional[Dict[str, Any]] = None
-                    for game in result:
-                        game_name = game.get("name", "").lower()
-                        cn_name = game.get("chineseName", "").lower()
-                        if game_name == original_keyword or cn_name == original_keyword:
-                            exact_match = game
-                            break
-                        if original_keyword in game_name or original_keyword in cn_name:
-                            if not best_match:
-                                best_match = game
-                    selected_game = exact_match or best_match or result[0]
-                    s_keyword = selected_game.get("name")
-                    if s_keyword:
-                        return s_keyword
-                    raise APIServerError("模糊搜索返回结果但游戏名为空")
-                raise GameNotFoundError("模糊搜索无结果，请尝试更改关键词")
-            raise APIServerError(f"模糊搜索返回错误，返回码code:{code}")
+        res: Dict[str, Any] = await self._fetch_json("GET", url, session=session, retries=1)
+        code = res.get("code")
+        if code == 0:
+            result: List[Dict[str, Any]] = res.get("data", {}).get("result", [])
+            if result:
+                original_keyword = keyword_q.replace("%20", " ").lower()
+                best_match: Optional[Dict[str, Any]] = None
+                exact_match: Optional[Dict[str, Any]] = None
+                for game in result:
+                    game_name = game.get("name", "").lower()
+                    cn_name = game.get("chineseName", "").lower()
+                    if game_name == original_keyword or cn_name == original_keyword:
+                        exact_match = game
+                        break
+                    if original_keyword in game_name or original_keyword in cn_name:
+                        if not best_match:
+                            best_match = game
+                selected_game = exact_match or best_match or result[0]
+                s_keyword = selected_game.get("name")
+                if s_keyword:
+                    return s_keyword
+                raise APIServerError("模糊搜索返回结果但游戏名为空")
+            raise GameNotFoundError("模糊搜索无结果，请尝试更改关键词")
+        raise APIServerError(f"模糊搜索返回错误，返回码code:{code}")
 
     def info_list(self, info: dict[str, Any]):
         import re
@@ -204,6 +258,12 @@ class GalinfoPlugin(PluginBase):
         self.auto_posts_today = 0
         self.auto_post_reset_date = None
         self.recent_games = []
+        # 伪随机防重复相关
+        self.avoid_repeat = bool(
+            getattr(self.auto_post, 'enabled', False)
+            and context.config.get('auto_post', {}).get('avoid_repeat', True)
+        )
+        self.used_game_names: Set[str] = set()
         self.tag_pattern = re.compile(
             r'(?<![^\s.,!?;:()\[\]{{}}\'"“”‘’<>《》|/\\~`·、，。！？；：（）【】]){}(?![^\s.,!?;:()\[\]{{}}\'"“”‘’<>《》|/\\~`·、，。！？；：（）【】])'.format(
                 re.escape(self.trigger_tag)
@@ -591,37 +651,28 @@ class GalinfoPlugin(PluginBase):
         
         if not game_names:
             return None
-        
-        # 过滤掉最近5次获取的游戏
-        available_games = list(game_names - set(self.recent_games))
-        
-        # 如果可用游戏不足，允许重复（避免无结果）
-        if not available_games:
-            available_games = list(game_names)
-        
-        # 随机选择一个游戏
-        selected_game = random.choice(available_games)
-        
+        selected_game = self._select_game_name(game_names)
+
         # 更新最近游戏列表
         self.recent_games.append(selected_game)
         if len(self.recent_games) > 5:
             self.recent_games.pop(0)  # 移除最旧的
-        
+
         # 根据配置选择数据类型
         suffix = "_AI" if self.auto_post.use_ai_enhanced_data else "_original"
         cache_key = f"{selected_game}{suffix}"
-        
+
         # 如果指定类型不存在，回退到另一种
         if cache_key not in cache:
             alt_suffix = "_original" if suffix == "_AI" else "_AI"
             alt_key = f"{selected_game}{alt_suffix}"
             if alt_key in cache:
                 cache_key = alt_key
-        
+
         entry = cache.get(cache_key)
         if entry:
             return entry.get("response", "")
-        
+
         return None
 
     # 新的异步版本，优先使用内存缓存（不命中则加载）
@@ -633,8 +684,7 @@ class GalinfoPlugin(PluginBase):
         game_names = {k.rsplit('_', 1)[0] for k in cache if k.endswith('_original') or k.endswith('_AI')}
         if not game_names:
             return None
-        available_games = list(game_names - set(self.recent_games)) or list(game_names)
-        selected_game = random.choice(available_games)
+        selected_game = self._select_game_name(game_names)
         self.recent_games.append(selected_game)
         if len(self.recent_games) > 5:
             self.recent_games.pop(0)
@@ -766,6 +816,8 @@ class GalinfoPlugin(PluginBase):
         try:
             # 仅记录（全局 OpenAI 由框架统一管理）
             self._log_plugin_action("初始化", "Galinfo 插件已就绪（使用全局 OpenAI 客户端）")
+            # 加载已使用的游戏名（用于伪随机防重复）
+            await self._load_used_games()
             return True
         except Exception as e:
             self._log_plugin_action("插件初始化失败", str(e))
@@ -775,5 +827,54 @@ class GalinfoPlugin(PluginBase):
         try:
             # 无需关闭全局 OpenAI
             self._log_plugin_action("清理", "完成")
+        except Exception:
+            pass
+
+    # ---------------- 伪随机防重复逻辑 -----------------
+    def _select_game_name(self, all_game_names: Set[str]) -> str:
+        """选择一个游戏名：
+        - 若启用 avoid_repeat：不重复直到全部用完（持久化 used_game_names）
+        - 否则：使用最近窗口 + 全集兜底策略
+        """
+        if not all_game_names:
+            return ""
+        if self.avoid_repeat:
+            remaining = list(all_game_names - self.used_game_names)
+            if not remaining:  # 一轮已用完，重置
+                self.used_game_names.clear()
+                remaining = list(all_game_names)
+            selected = random.choice(remaining)
+            # 记录并尝试异步保存（不 await 以免阻塞同步路径）
+            self.used_game_names.add(selected)
+            # 调度保存（如果事件循环可用）
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._save_used_games())
+            except RuntimeError:
+                # 若无事件循环（极少数同步路径），忽略，稍后异步调用会覆盖
+                pass
+            return selected
+        # 旧逻辑：避免最近 5 次重复
+        available = list(all_game_names - set(self.recent_games)) or list(all_game_names)
+        return random.choice(available)
+
+    async def _load_used_games(self) -> None:
+        if not hasattr(self, 'persistence_manager') or not self.persistence_manager:
+            return
+        try:
+            data = await self.persistence_manager.get_plugin_data("Galinfo", "used_games")
+            if data:
+                loaded = json.loads(data)
+                if isinstance(loaded, list):
+                    self.used_game_names = set(map(str, loaded))
+        except Exception:
+            # 忽略加载错误，保持空集合
+            self.used_game_names = set()
+
+    async def _save_used_games(self) -> None:
+        if not hasattr(self, 'persistence_manager') or not self.persistence_manager:
+            return
+        try:
+            await self.persistence_manager.set_plugin_data("Galinfo", "used_games", json.dumps(list(self.used_game_names), ensure_ascii=False))
         except Exception:
             pass
