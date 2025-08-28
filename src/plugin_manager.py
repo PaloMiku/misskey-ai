@@ -19,11 +19,14 @@ class PluginManager:
         config: Config,
         plugins_dir: str = "plugins",
         persistence=None,
+        bot: Any = None,
     ):
         self.config = config
         self.plugins_dir = Path(plugins_dir)
         self.plugins: dict[str, PluginBase] = {}
         self.persistence = persistence
+        # 注入 bot 以便插件可访问全局资源（如 OpenAI 客户端）
+        self.bot = bot
 
     async def __aenter__(self):
         return self
@@ -120,6 +123,7 @@ class PluginManager:
             utils_provider=utils_provider,
             plugin_manager=self,
             global_config=self.config,
+            bot=self.bot,
         )
         return plugin_class(context)
 

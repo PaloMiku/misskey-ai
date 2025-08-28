@@ -47,7 +47,10 @@ class MisskeyBot:
             logger.error(f"初始化失败: {e}")
             raise ConfigurationError() from e
         self.persistence = PersistenceManager(config.get(ConfigKeys.DB_PATH))
-        self.plugin_manager = PluginManager(config, persistence=self.persistence)
+        # 传入 self 使插件能访问全局 OpenAI 等资源
+        self.plugin_manager = PluginManager(
+            config, persistence=self.persistence, bot=self
+        )
         self.runtime = BotRuntime(self)
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
         self.bot_user_id = None
