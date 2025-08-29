@@ -4,6 +4,7 @@ __all__ = (
     "AuthenticationError",
     "APIConnectionError",
     "APIRateLimitError",
+    "APIBadRequestError",
     "WebSocketConnectionError",
     "WebSocketReconnectError",
     "ClientConnectorError",
@@ -28,6 +29,10 @@ class APIConnectionError(MisskeyBotError):
 
 class APIRateLimitError(MisskeyBotError):
     """API 速率限制错误"""
+
+
+class APIBadRequestError(MisskeyBotError):
+    """API 请求错误"""
 
 
 class WebSocketConnectionError(MisskeyBotError):

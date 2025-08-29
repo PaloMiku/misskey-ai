@@ -21,6 +21,7 @@ class ConfigKeys:
 
 
 HTTP_OK = 200
+HTTP_BAD_REQUEST = 400
 HTTP_UNAUTHORIZED = 401
 HTTP_FORBIDDEN = 403
 HTTP_TOO_MANY_REQUESTS = 429
@@ -44,7 +45,8 @@ ERROR_MESSAGES = {
     "MisskeyBotError": "抱歉，出现未知问题，请联系管理员。",
     "APIRateLimitError": "抱歉，请求过于频繁，请稍后再试。",
     "AuthenticationError": "抱歉，服务配置有误，请联系管理员。",
-    "APIConnectionError": "抱歉，AI 服务暂不可用，请稍后再试。",
+    "APIConnectionError": "抱歉，服务暂不可用，请稍后再试。",
+    "APIBadRequestError": "抱歉，服务暂不可用，请稍后再试。",
     "ValueError": "抱歉，请求参数无效，请检查输入。",
     "RuntimeError": "抱歉，系统资源不足，请稍后再试。",
 }

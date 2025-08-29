@@ -215,8 +215,11 @@ class StreamingClient:
     async def _disconnect_all_channels(self) -> None:
         for channel_id in list(self.channels.keys()):
             if self._ws_available:
-                message = {"type": "disconnect", "body": {"id": channel_id}}
-                await self.ws_connection.send_json(message)
+                try:
+                    message = {"type": "disconnect", "body": {"id": channel_id}}
+                    await self.ws_connection.send_json(message)
+                except (OSError, ValueError) as e:
+                    logger.warning(f"断开频道 {channel_id} 时出错: {e}")
         self.channels.clear()
 
     async def _process_message(
