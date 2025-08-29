@@ -1,24 +1,42 @@
 from __future__ import annotations
-
 import json
 import re
+import textwrap
+from dataclasses import asdict, dataclass, field
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Optional
-
 from loguru import logger
-
 from src import PluginBase
+
+# 统一 token 正则（仅一次编译）
+_TOKEN_RE = re.compile(r"[^0-9A-Za-z\u4e00-\u9fa5]+")
+
+@dataclass
+class _UserData:
+    stats: dict[str, Any] = field(default_factory=dict)  # count, first_ts, last_ts
+    messages: list[str] = field(default_factory=list)
+    summary: str = ""
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+
+    @classmethod
+    def from_json(cls, raw: str | None) -> "_UserData":
+        if not raw:
+            return cls()
+        try:
+            data = json.loads(raw)
+            return cls(
+                stats=data.get("stats", {}) or {},
+                messages=data.get("messages", []) or [],
+                summary=data.get("summary", "") or "",
+            )
+        except json.JSONDecodeError:
+            return cls()
 
 
 class UserMemoryPlugin(PluginBase):
-    """用户记忆与画像插件。
-
-    设计目标：
-    - 低侵入：使用已有 `plugin_data` 表；键命名空间规范化。
-    - 可控成本：定期摘要，避免每条消息都调用模型。
-    - 可选拦截：允许只记录不回复。
-    """
-
     description = "为用户构建画像与记忆，支持个性化回复"
 
     def __init__(self, context):  # type: ignore[no-untyped-def]
@@ -39,6 +57,8 @@ class UserMemoryPlugin(PluginBase):
         self.ignore_hashtag_messages = cfg.get("ignore_hashtag_messages", True)
         # 统一插件名（PluginContext 已设定 Name=User_memory => capitalize 可能不同）
         self.storage_plugin_name = "UserMemory"  # DB 中使用统一名字
+        # 内存缓存：user_id -> _UserData
+        self._user_cache: dict[str, _UserData] = {}
 
     async def initialize(self) -> bool:  # type: ignore[override]
         if not getattr(self, "persistence_manager", None):
@@ -71,7 +91,9 @@ class UserMemoryPlugin(PluginBase):
             if not self.handle_messages:
                 return None
             reply = await self._generate_personalized_reply(user_id, username, text)
-            return self._create_response(reply) if reply else None
+            if reply:
+                return {"handled": True, "plugin_name": self.name, "response": reply}
+            return None
         except Exception as e:  # noqa: BLE001
             logger.warning(f"UserMemory on_message 失败: {e}")
             return None
@@ -94,7 +116,9 @@ class UserMemoryPlugin(PluginBase):
             if not self.handle_mentions:
                 return None
             reply = await self._generate_personalized_reply(user_id, username, text)
-            return self._create_response(reply) if reply else None
+            if reply:
+                return {"handled": True, "plugin_name": self.name, "response": reply}
+            return None
         except Exception as e:  # noqa: BLE001
             logger.warning(f"UserMemory on_mention 失败: {e}")
             return None
@@ -102,69 +126,35 @@ class UserMemoryPlugin(PluginBase):
     # -------------------------- 核心逻辑 --------------------------
 
     async def _record_user_message(self, user_id: str, text: str) -> None:
-        # stats
-        stats_key = self._k_stats(user_id)
-        stats_raw = await self.persistence_manager.get_plugin_data(
-            self.storage_plugin_name, stats_key
-        )
+        data = await self._ensure_cache(user_id)
         now_ts = int(datetime.now(timezone.utc).timestamp())
-        if stats_raw:
-            try:
-                stats = json.loads(stats_raw)
-            except json.JSONDecodeError:
-                stats = {}
-        else:
-            stats = {}
+        stats = data.stats
         count = int(stats.get("count", 0)) + 1
         if not stats.get("first_ts"):
             stats["first_ts"] = now_ts
         stats["last_ts"] = now_ts
         stats["count"] = count
-        await self.persistence_manager.set_plugin_data(
-            self.storage_plugin_name, stats_key, json.dumps(stats, ensure_ascii=False)
-        )
-
-        # messages
-        msgs_key = self._k_messages(user_id)
-        msgs_raw = await self.persistence_manager.get_plugin_data(
-            self.storage_plugin_name, msgs_key
-        )
-        if msgs_raw:
-            try:
-                msgs = json.loads(msgs_raw)
-            except json.JSONDecodeError:
-                msgs = []
-        else:
-            msgs = []
-        msgs.append(text.strip())
-        if len(msgs) > self.max_messages:
-            msgs = msgs[-self.max_messages :]
-        await self.persistence_manager.set_plugin_data(
-            self.storage_plugin_name, msgs_key, json.dumps(msgs, ensure_ascii=False)
-        )
+        # 更新消息
+        data.messages.append(text.strip())
+        if len(data.messages) > self.max_messages:
+            data.messages = data.messages[-self.max_messages :]
+        # 触发条件合并
+        if count % self.summary_interval == 0 or count == 1:
+            await self._update_summary(user_id, data)
+        # 单 key 写回（一次 I/O）
+        await self._save_user_data(user_id, data)
         if self.debug_log:
             logger.debug(f"[UserMemory] {user_id} 记录消息 #{count}: {text[:40]}")
-        # summarization trigger
-        if count == 1 or count % self.summary_interval == 0:
-            await self._update_summary(user_id, msgs)
 
-    async def _update_summary(self, user_id: str, msgs: list[str] | None = None) -> None:
-        summary_key = self._k_summary(user_id)
-        if msgs is None:
-            raw = await self.persistence_manager.get_plugin_data(
-                self.storage_plugin_name, self._k_messages(user_id)
-            )
-            try:
-                msgs = json.loads(raw) if raw else []
-            except json.JSONDecodeError:
-                msgs = []
+    async def _update_summary(self, user_id: str, data: _UserData) -> None:
+        msgs = data.messages
         if not msgs:
             return
         keywords = self._extract_keywords(msgs)
         # 构造总结提示
         prompt = (
             "请基于以下用户最近的聊天消息，提炼其兴趣、常用语气、可能的偏好或关注点。"
-            "输出精炼中文总结，不超过"
+            "输出精炼中文总结,为其构建用户画像，不超过"
             f"{self.summary_max_length}字。若信息不足请说明‘信息有限’。\n\n"
         )
         numbered = "\n".join(f"{i+1}. {m}" for i, m in enumerate(msgs[-self.max_messages :]))
@@ -176,36 +166,32 @@ class UserMemoryPlugin(PluginBase):
         except Exception as e:  # noqa: BLE001
             logger.warning(f"UserMemory 生成 summary 失败: {e}")
             return
-        # 截断
-        summary = summary.strip().replace("\n", " ")
-        if len(summary) > self.summary_max_length:
-            summary = summary[: self.summary_max_length].rstrip() + "…"
-        await self.persistence_manager.set_plugin_data(
-            self.storage_plugin_name, summary_key, summary
+        # 截断交给 textwrap.shorten（保持占位符 …）
+        summary = textwrap.shorten(
+            summary.strip().replace("\n", " "),
+            width=self.summary_max_length,
+            placeholder="…",
         )
+        data.summary = summary
+        await self._save_user_data(user_id, data)
         if self.debug_log:
             logger.debug(f"[UserMemory] 更新 summary {user_id}: {summary}")
 
     async def _generate_personalized_reply(
         self, user_id: str, username: str, text: str
     ) -> Optional[str]:
-        # 取 summary
-        summary = await self.persistence_manager.get_plugin_data(
-            self.storage_plugin_name, self._k_summary(user_id)
+        data = await self._ensure_cache(user_id)
+        stats = data.stats
+        stats_info = (
+            f"交互次数:{stats.get('count')} 首次:{self._fmt_ts(stats.get('first_ts'))} 最近:{self._fmt_ts(stats.get('last_ts'))}"
+            if stats.get("count")
+            else ""
         )
-        stats_raw = await self.persistence_manager.get_plugin_data(
-            self.storage_plugin_name, self._k_stats(user_id)
+        memory_block = (
+            f"\n\n{self.system_memory_prefix}\n用户画像: {data.summary}\n{stats_info}".strip()
+            if data.summary
+            else ""
         )
-        stats_info = ""
-        if stats_raw:
-            try:
-                stats = json.loads(stats_raw)
-                stats_info = f"交互次数:{stats.get('count')} 首次:{self._fmt_ts(stats.get('first_ts'))} 最近:{self._fmt_ts(stats.get('last_ts'))}"
-            except json.JSONDecodeError:  # noqa: PERF203
-                pass
-        memory_block = ""
-        if summary:
-            memory_block = f"\n\n{self.system_memory_prefix}\n用户画像: {summary}\n{stats_info}".strip()
         system_prompt = (self.bot.system_prompt or "").strip() + memory_block
         messages = [
             {"role": "system", "content": system_prompt},
@@ -220,30 +206,12 @@ class UserMemoryPlugin(PluginBase):
 
     # -------------------------- 工具函数 --------------------------
 
-    def _create_response(self, response_text: str) -> Optional[dict[str, Any]]:
-        try:
-            response = {
-                "handled": True,
-                "plugin_name": self.name,
-                "response": response_text,
-            }
-            return response if self._validate_plugin_response(response) else None
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"UserMemory 创建响应失败: {e}")
-            return None
-
     def _extract_keywords(self, msgs: list[str]) -> list[str]:
         text = " ".join(msgs)
-        # 简单分词：按非字母数字汉字分割
-        tokens = [
-            t
-            for t in re.split(r"[^0-9A-Za-z\u4e00-\u9fa5]+", text)
-            if len(t) >= self.min_kw_len
-        ]
-        freq = {}
-        for tok in tokens:
-            freq[tok] = freq.get(tok, 0) + 1
-        # 排序：频次 -> 长度 -> 字典序
+        tokens = [t for t in _TOKEN_RE.split(text) if len(t) >= self.min_kw_len]
+        if not tokens:
+            return []
+        freq = Counter(tokens)
         ranked = sorted(
             freq.items(), key=lambda x: (-x[1], -len(x[0]), x[0])
         )[: self.keywords_top_n]
@@ -259,17 +227,55 @@ class UserMemoryPlugin(PluginBase):
         except Exception:  # noqa: BLE001
             return "-"
 
-    def _k_stats(self, uid: str) -> str:  # key helpers
-        return f"user:{uid}:stats"
-
-    def _k_messages(self, uid: str) -> str:
-        return f"user:{uid}:messages"
-
-    def _k_summary(self, uid: str) -> str:
-        return f"user:{uid}:summary"
+    def _k_user(self, uid: str) -> str:  # 统一 key
+        return f"user:{uid}:data"
 
     # -------------------------- 预处理助手 --------------------------
 
     def _contains_hashtag(self, text: str) -> bool:
         """检测文本是否含 # / ＃ 任一字符；含则视为 hashtag 信息整条跳过。"""
         return "#" in text or "＃" in text
+
+    # -------------------------- 缓存与 JSON 工具 --------------------------
+
+    async def _ensure_cache(self, user_id: str) -> _UserData:
+        if user_id in self._user_cache:
+            return self._user_cache[user_id]
+        # 优先读统一 key
+        raw = await self.persistence_manager.get_plugin_data(
+            self.storage_plugin_name, self._k_user(user_id)
+        )
+        data = _UserData.from_json(raw)
+        # 兼容旧数据：若 messages 或 stats 为空且存在旧 key，则尝试迁移（只在首次）
+        if not data.messages and not data.stats:
+            old_stats = await self.persistence_manager.get_plugin_data(
+                self.storage_plugin_name, f"user:{user_id}:stats"
+            )
+            old_msgs = await self.persistence_manager.get_plugin_data(
+                self.storage_plugin_name, f"user:{user_id}:messages"
+            )
+            old_summary = await self.persistence_manager.get_plugin_data(
+                self.storage_plugin_name, f"user:{user_id}:summary"
+            )
+            # 解析
+            data.stats = self._safe_json(old_stats, {}) or {}
+            data.messages = self._safe_json(old_msgs, []) or []
+            if old_summary:
+                data.summary = old_summary or ""
+            if data.stats or data.messages or data.summary:
+                await self._save_user_data(user_id, data)
+        self._user_cache[user_id] = data
+        return data
+
+    async def _save_user_data(self, user_id: str, data: _UserData) -> None:
+        await self.persistence_manager.set_plugin_data(
+            self.storage_plugin_name, self._k_user(user_id), data.to_json()
+        )
+
+    def _safe_json(self, raw: str | None, default: Any) -> Any:
+        if not raw:
+            return default
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return default
