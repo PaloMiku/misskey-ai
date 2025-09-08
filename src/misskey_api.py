@@ -111,7 +111,7 @@ class MisskeyAPI:
         reply_priority = visibility_priority.get(visibility, 3)
         if reply_priority > original_priority:
             logger.debug(
-                f"调整回复可见性从 {visibility} 到 {original_visibility} 以匹配原笔记"
+                f"调整回复可见性从 {visibility} 到 {original_visibility} 以匹配原帖"
             )
             return original_visibility
         return visibility
@@ -129,7 +129,7 @@ class MisskeyAPI:
             AuthenticationError,
             ValueError,
         ) as e:
-            logger.warning(f"获取原笔记可见性失败，使用默认设置: {e}")
+            logger.warning(f"获取原帖可见性失败，使用默认设置: {e}")
             return visibility if visibility is not None else "home"
 
     async def create_note(
