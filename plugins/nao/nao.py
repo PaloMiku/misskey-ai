@@ -30,11 +30,16 @@ class NaoImageSearch(PluginBase):
         return data.get("note", data)
 
     def _extract_images(self, data):
-        return [
-            f.get("url") or f.get("thumbnailUrl")
-            for f in self._note(data).get("files", [])
-            if isinstance(f, dict) and f.get("type", "").startswith("image/")
-        ]
+        images = []
+        for f in self._note(data).get("files", []):
+            if not isinstance(f, dict):
+                continue
+            if not (f.get("type", "") or "").startswith("image/"):
+                continue
+            url = f.get("url") or f.get("thumbnailUrl")
+            if url:
+                images.append(url)
+        return images
 
     def _should_trigger(self, data) -> bool:
         text = self._note(data).get("text", "") or ""
@@ -70,11 +75,20 @@ class NaoImageSearch(PluginBase):
                 "db": "999",
                 **({"api_key": self.api_key} if self.api_key else {})
             }
-            async with self.session.get(self.saucenao_api_url, params=params) as r:
-                if r.status != 200:
-                    logger.error(f"SauceNAO API 请求失败: {r.status}")
-                    return None
-                return self._format(await r.json())
+            created = False
+            session = self.session
+            if session is None:
+                session = aiohttp.ClientSession()
+                created = True
+            try:
+                async with session.get(self.saucenao_api_url, params=params) as r:
+                    if r.status != 200:
+                        logger.error(f"SauceNAO API 请求失败: {r.status}")
+                        return None
+                    return self._format(await r.json())
+            finally:
+                if created:
+                    await session.close()
         except Exception as e:
             logger.error(f"SauceNAO 图片搜索失败: {e}")
             return None
@@ -104,7 +118,7 @@ class NaoImageSearch(PluginBase):
             logger.error(f"解析 SauceNAO 响应失败: {e}")
             return None
 
-    def _create_response(self, response_text: str, content_key: str = "response") -> Dict[str, Any]:
+    def _create_response(self, response_text: str, content_key: str = "response") -> Optional[Dict[str, Any]]:
         """创建插件响应"""
         try:
             response = {
