@@ -9,14 +9,32 @@ from typing import Any, Optional
 from loguru import logger
 from src import PluginBase
 
+# 类型声明（用于类型检查）
+from src.persistence import PersistenceManager
+
+class MockOpenAI:
+    """Mock OpenAI 类用于类型检查"""
+    async def generate_text(self, prompt: str) -> str:
+        return ""
+    
+    async def generate_chat(self, messages: list[dict[str, str]]) -> str:
+        return ""
+
+class MockBot:
+    """Mock 类用于类型检查"""
+    def __init__(self):
+        self.system_prompt = ""
+        self.openai = MockOpenAI()
+
 # 统一 token 正则（仅一次编译）
 _TOKEN_RE = re.compile(r"[^0-9A-Za-z\u4e00-\u9fa5]+")
 
 @dataclass
 class _UserData:
-    stats: dict[str, Any] = field(default_factory=dict)  # count, first_ts, last_ts
+    stats: dict[str, Any] = field(default_factory=dict)  # count, first_ts, last_ts, username, etc.
     messages: list[str] = field(default_factory=list)
     summary: str = ""
+    profile: dict[str, Any] = field(default_factory=dict)  # 多方面用户画像
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -31,6 +49,7 @@ class _UserData:
                 stats=data.get("stats", {}) or {},
                 messages=data.get("messages", []) or [],
                 summary=data.get("summary", "") or "",
+                profile=data.get("profile", {}) or {},
             )
         except json.JSONDecodeError:
             return cls()
@@ -38,6 +57,10 @@ class _UserData:
 
 class UserMemoryPlugin(PluginBase):
     description = "为用户构建画像与记忆，支持个性化回复"
+    
+    # 声明动态设置的属性（用于类型检查）
+    persistence_manager: PersistenceManager
+    bot: MockBot
 
     def __init__(self, context):  # type: ignore[no-untyped-def]
         super().__init__(context)
@@ -59,6 +82,8 @@ class UserMemoryPlugin(PluginBase):
         self.storage_plugin_name = "UserMemory"  # DB 中使用统一名字
         # 内存缓存：user_id -> _UserData
         self._user_cache: dict[str, _UserData] = {}
+        # 用户名到用户ID的映射缓存：username -> user_id
+        self._username_cache: dict[str, str] = {}
 
     async def initialize(self) -> bool:  # type: ignore[override]
         if not getattr(self, "persistence_manager", None):
@@ -87,7 +112,7 @@ class UserMemoryPlugin(PluginBase):
                 return None
             username = self._extract_username(message_data)
             # 仅记录原文本（不去掉 hashtag；因为含 hashtag 的已被跳过）
-            await self._record_user_message(user_id, text)
+            await self._record_user_message(user_id, text, username)
             if not self.handle_messages:
                 return None
             reply = await self._generate_personalized_reply(user_id, username, text)
@@ -112,7 +137,7 @@ class UserMemoryPlugin(PluginBase):
                     logger.debug("[UserMemory] 跳过含 hashtag 的提及: %s", text[:60])
                 return None
             username = user.get("username", "unknown")
-            await self._record_user_message(user_id, text)
+            await self._record_user_message(user_id, text, username)
             if not self.handle_mentions:
                 return None
             reply = await self._generate_personalized_reply(user_id, username, text)
@@ -125,7 +150,8 @@ class UserMemoryPlugin(PluginBase):
 
     # -------------------------- 核心逻辑 --------------------------
 
-    async def _record_user_message(self, user_id: str, text: str) -> None:
+    async def _record_user_message(self, user_id: str, text: str, username: str = "") -> None:
+        """记录用户消息并更新统计信息"""
         data = await self._ensure_cache(user_id)
         now_ts = int(datetime.now(timezone.utc).timestamp())
         stats = data.stats
@@ -134,6 +160,13 @@ class UserMemoryPlugin(PluginBase):
             stats["first_ts"] = now_ts
         stats["last_ts"] = now_ts
         stats["count"] = count
+        # 更新用户名映射
+        if username and username != "unknown":
+            stats["username"] = username
+            self._username_cache[username] = user_id
+            await self.persistence_manager.set_plugin_data(  # type: ignore[attr-defined]
+                self.storage_plugin_name, self._k_username(username), user_id
+            )
         # 更新消息
         data.messages.append(text.strip())
         if len(data.messages) > self.max_messages:
@@ -151,18 +184,24 @@ class UserMemoryPlugin(PluginBase):
         if not msgs:
             return
         keywords = self._extract_keywords(msgs)
-        # 构造总结提示
+        # 构造更详细的总结提示
         prompt = (
-            "请基于以下用户最近的聊天消息，提炼其兴趣、常用语气、可能的偏好或关注点。"
-            "输出精炼中文总结,为其构建用户画像，不超过"
-            f"{self.summary_max_length}字。若信息不足请说明‘信息有限’。\n\n"
+            "请基于以下用户最近的聊天消息，提炼用户的多方面信息，包括但不限于：\n"
+            "- 兴趣爱好和关注话题\n"
+            "- 常用语气和表达风格\n"
+            "- 情感倾向（积极/消极/中性）\n"
+            "- 互动频率和时间偏好\n"
+            "- 可能的职业或身份特征\n"
+            "- 特殊偏好或忌讳\n\n"
+            "输出精炼中文总结，为其构建全面用户画像，不超过"
+            f"{self.summary_max_length}字。若信息不足请说明'信息有限'。\n\n"
         )
         numbered = "\n".join(f"{i+1}. {m}" for i, m in enumerate(msgs[-self.max_messages :]))
         prompt += numbered
         if keywords:
             prompt += "\n\n候选关键词: " + ", ".join(keywords)
         try:
-            summary = await self.bot.openai.generate_text(prompt)
+            summary = await self.bot.openai.generate_text(prompt)  # type: ignore[attr-defined]
         except Exception as e:  # noqa: BLE001
             logger.warning(f"UserMemory 生成 summary 失败: {e}")
             return
@@ -173,6 +212,8 @@ class UserMemoryPlugin(PluginBase):
             placeholder="…",
         )
         data.summary = summary
+        # 更新多方面画像
+        await self._update_profile(user_id, data, keywords)
         await self._save_user_data(user_id, data)
         if self.debug_log:
             logger.debug(f"[UserMemory] 更新 summary {user_id}: {summary}")
@@ -192,13 +233,13 @@ class UserMemoryPlugin(PluginBase):
             if data.summary
             else ""
         )
-        system_prompt = (self.bot.system_prompt or "").strip() + memory_block
+        system_prompt = (self.bot.system_prompt or "").strip() + memory_block  # type: ignore[attr-defined]
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": text},
         ]
         try:
-            reply = await self.bot.openai.generate_chat(messages)
+            reply = await self.bot.openai.generate_chat(messages)  # type: ignore[attr-defined]
             return reply
         except Exception as e:  # noqa: BLE001
             logger.warning(f"UserMemory 个性化回复失败: {e}")
@@ -230,6 +271,61 @@ class UserMemoryPlugin(PluginBase):
     def _k_user(self, uid: str) -> str:  # 统一 key
         return f"user:{uid}:data"
 
+    def _k_username(self, username: str) -> str:  # 用户名映射 key
+        return f"username:{username}:user_id"
+
+    async def _update_profile(self, user_id: str, data: _UserData, keywords: list[str]) -> None:
+        """更新多方面用户画像"""
+        profile = data.profile
+        stats = data.stats
+        
+        # 基础统计信息
+        profile["interaction_count"] = stats.get("count", 0)
+        profile["first_interaction"] = self._fmt_ts(stats.get("first_ts"))
+        profile["last_interaction"] = self._fmt_ts(stats.get("last_ts"))
+        profile["username"] = stats.get("username", "unknown")
+        
+        # 关键词分析
+        if keywords:
+            profile["top_keywords"] = keywords[:5]  # 保留前5个关键词
+        
+        # 情感倾向分析（基于关键词和表情符号）
+        positive_words = ["喜欢", "好", "棒", "不错", "开心", "快乐", "感谢", "谢谢", "爱", "喜欢", "完美", "优秀"]
+        negative_words = ["讨厌", "不好", "差", "生气", "难过", "烦", "讨厌", "糟糕", "失望", "生气", "愤怒"]
+        neutral_words = ["一般", "还可以", "普通", "正常"]
+        
+        text = " ".join(data.messages).lower()
+        positive_count = sum(1 for word in positive_words if word in text)
+        negative_count = sum(1 for word in negative_words if word in text)
+        neutral_count = sum(1 for word in neutral_words if word in text)
+        
+        # 加入表情符号分析
+        positive_emojis = ["😊", "😄", "😍", "👍", "❤️", "🎉", "😎"]
+        negative_emojis = ["😢", "😭", "😠", "👎", "💔", "😞", "😡"]
+        
+        positive_emoji_count = sum(1 for emoji in positive_emojis if emoji in text)
+        negative_emoji_count = sum(1 for emoji in negative_emojis if emoji in text)
+        
+        total_positive = positive_count + positive_emoji_count
+        total_negative = negative_count + negative_emoji_count
+        
+        if total_positive > total_negative + 1:  # 稍微倾向积极
+            profile["sentiment"] = "积极"
+        elif total_negative > total_positive + 1:  # 稍微倾向消极
+            profile["sentiment"] = "消极"
+        elif neutral_count > 0 or (total_positive > 0 and total_negative > 0):
+            profile["sentiment"] = "中性"
+        else:
+            profile["sentiment"] = "未知"
+        
+        # 时间偏好分析
+        if stats.get("first_ts") and stats.get("last_ts"):
+            first_hour = datetime.fromtimestamp(stats["first_ts"], tz=timezone.utc).hour
+            last_hour = datetime.fromtimestamp(stats["last_ts"], tz=timezone.utc).hour
+            profile["active_hours"] = f"{first_hour:02d}:00-{last_hour:02d}:00"
+        
+        data.profile = profile
+
     # -------------------------- 预处理助手 --------------------------
 
     def _contains_hashtag(self, text: str) -> bool:
@@ -242,19 +338,19 @@ class UserMemoryPlugin(PluginBase):
         if user_id in self._user_cache:
             return self._user_cache[user_id]
         # 优先读统一 key
-        raw = await self.persistence_manager.get_plugin_data(
+        raw = await self.persistence_manager.get_plugin_data(  # type: ignore[attr-defined]
             self.storage_plugin_name, self._k_user(user_id)
         )
         data = _UserData.from_json(raw)
         # 兼容旧数据：若 messages 或 stats 为空且存在旧 key，则尝试迁移（只在首次）
         if not data.messages and not data.stats:
-            old_stats = await self.persistence_manager.get_plugin_data(
+            old_stats = await self.persistence_manager.get_plugin_data(  # type: ignore[attr-defined]
                 self.storage_plugin_name, f"user:{user_id}:stats"
             )
-            old_msgs = await self.persistence_manager.get_plugin_data(
+            old_msgs = await self.persistence_manager.get_plugin_data(  # type: ignore[attr-defined]
                 self.storage_plugin_name, f"user:{user_id}:messages"
             )
-            old_summary = await self.persistence_manager.get_plugin_data(
+            old_summary = await self.persistence_manager.get_plugin_data(  # type: ignore[attr-defined]
                 self.storage_plugin_name, f"user:{user_id}:summary"
             )
             # 解析
@@ -268,7 +364,7 @@ class UserMemoryPlugin(PluginBase):
         return data
 
     async def _save_user_data(self, user_id: str, data: _UserData) -> None:
-        await self.persistence_manager.set_plugin_data(
+        await self.persistence_manager.set_plugin_data(  # type: ignore[attr-defined]
             self.storage_plugin_name, self._k_user(user_id), data.to_json()
         )
 
@@ -279,3 +375,50 @@ class UserMemoryPlugin(PluginBase):
             return json.loads(raw)
         except json.JSONDecodeError:
             return default
+
+    async def get_user_by_username(self, username: str) -> Optional[str]:
+        """通过用户名获取用户ID"""
+        if username in self._username_cache:
+            return self._username_cache[username]
+        
+        # 从数据库查询
+        user_id = await self.persistence_manager.get_plugin_data(  # type: ignore[attr-defined]
+            self.storage_plugin_name, self._k_username(username)
+        )
+        if user_id:
+            self._username_cache[username] = user_id
+            return user_id
+        return None
+
+    async def get_user_profile(self, identifier: str) -> Optional[dict[str, Any]]:
+        """通过用户ID或用户名获取用户画像"""
+        user_id = None
+        
+        # 检查是否是用户名（以@开头）
+        if identifier.startswith('@'):
+            username = identifier[1:]  # 去掉@
+            user_id = await self.get_user_by_username(username)
+            if self.debug_log:
+                logger.debug(f"[UserMemory] 通过用户名 {username} 找到用户ID: {user_id}")
+        else:
+            user_id = identifier
+        
+        if not user_id:
+            if self.debug_log:
+                logger.debug(f"[UserMemory] 未找到用户: {identifier}")
+            return None
+            
+        data = await self._ensure_cache(user_id)
+        profile_data = {
+            "user_id": user_id,
+            "username": data.stats.get("username", "unknown"),
+            "summary": data.summary,
+            "profile": data.profile,
+            "stats": data.stats,
+            "recent_messages": data.messages[-5:] if data.messages else []
+        }
+        
+        if self.debug_log:
+            logger.debug(f"[UserMemory] 获取用户画像: {user_id}, 消息数: {len(data.messages)}")
+        
+        return profile_data

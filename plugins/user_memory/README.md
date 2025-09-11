@@ -1,5 +1,75 @@
 # User Memory Plugin
 
+为与机器人发生过聊天/提及互动的用户建立轻量级画## 数据键命名
+
+`UserMemory` 插件下：
+
+* `user:<uid>:## 后续可扩展方向
+
+* 向 Bot 核心添加"chat 前置上下文" hook，避免拦截生成。
+* 引入 embedding 与语义检索（需新增表）。
+* 引入遗忘策略：基于时间/权重衰减。
+* 支持通过用户名精准查询用户画像。
+* 多维度用户画像分析（情感、话题、时间偏好等）。
+
+## 新功能说明
+
+### 按用户名查询
+
+插件现在支持通过用户名（@XXXXX格式）精准查询用户记忆：
+
+```python
+# 在其他插件中调用
+user_profile = await user_memory_plugin.get_user_profile("@example_user")
+if user_profile:
+    print(f"用户画像: {user_profile['summary']}")
+    print(f"情感倾向: {user_profile['profile']['sentiment']}")
+```
+
+### 多方面用户画像
+
+用户画像现在包含更多维度信息：
+- **基础统计**：交互次数、首次/最近互动时间
+- **关键词分析**：用户最常提及的话题关键词
+- **情感倾向**：基于消息内容分析用户情感（积极/消极/中性）
+- **时间偏好**：用户活跃的时间段分析
+- **个性化总结**：AI生成的综合用户画像描述 => JSON格式的用户完整数据（包含stats, messages, summary, profile）
+* `username:<username>:user_id` => 用户名到用户ID的映射
+
+### 用户画像结构
+
+```json
+{
+  "user_id": "用户ID",
+  "username": "用户名",
+  "summary": "AI生成的个性化总结",
+  "profile": {
+    "interaction_count": 10,
+    "first_interaction": "12-01 14:30",
+    "last_interaction": "12-05 16:45",
+    "username": "example_user",
+    "top_keywords": ["技术", "编程", "AI"],
+    "sentiment": "积极",
+    "active_hours": "14:00-16:00"
+  },
+  "stats": {
+    "count": 10,
+    "first_ts": 1733000000,
+    "last_ts": 1733500000,
+    "username": "example_user"
+  },
+  "recent_messages": ["消息1", "消息2", "消息3"]
+}
+```支持：
+
+1. 统计用户交互次数、最近时间。
+2. 保留最近 N 条消息并周期性生成"兴趣/偏好/语气"总结。
+3. 生成多方面用户画像，包括情感倾向、关键词分析、活跃时间等。
+4. 支持按用户名（@XXXXX）精准查询用户记忆。
+5. 可选择由插件直接生成带个性化上下文的 AI 回复，或仅维护记忆供后续扩展。
+
+数据统一存储在主数据库 `data/misskey_ai.db` 的 `plugin_data` 表中（JSON格式）。mory Plugin
+
 为与机器人发生过聊天/提及互动的用户建立轻量级画像与按需记忆，支持：
 
 1. 统计用户交互次数、最近时间。
