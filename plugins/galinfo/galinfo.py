@@ -199,8 +199,7 @@ class APIYm:
             raise GameNotFoundError("模糊搜索无结果，请尝试更改关键词")
         raise APIServerError(f"模糊搜索返回错误，返回码code:{code}")
 
-    def info_list(self, info: dict[str, Any]):
-        import re
+    def info_list(self, info: Dict[str, Any]) -> str:
         parg = (info.get("intro") or "").split("\n")
         if len(parg) < 2:
             parg = (info.get("intro") or "").split("\n\n")
@@ -241,6 +240,7 @@ class GalinfoPlugin(PluginBase):
         self.trigger_tag = context.config.get('gal_tag', '#galgame')
         self.use_ai_enhancement = context.config.get('use_ai_enhancement', False)
         self.openai_api = getattr(getattr(context, "bot", None), "openai", None)
+        self.persistence_manager = getattr(context, "persistence_manager", None)
         self.ai_system_prompt = context.config.get('ai_system_prompt', DEFAULT_AI_SYSTEM_PROMPT)
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         self.cache_file = os.path.join(root_dir, 'data', 'galinfo.json')
@@ -308,8 +308,10 @@ class GalinfoPlugin(PluginBase):
             async with aiofiles.open(self.cache_file, 'w', encoding='utf-8') as f:  # type: ignore[attr-defined]
                 await f.write(json.dumps(self._memory_cache, ensure_ascii=False, indent=2))
         except ModuleNotFoundError:
-            # 回退同步
-            self._save_cache(self._memory_cache)
+            # 回退异步执行同步保存，避免阻塞事件循环
+            import asyncio
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._save_cache, self._memory_cache)
         except Exception as e:
             self._log_plugin_action("缓存写入失败", str(e))
 
@@ -329,7 +331,7 @@ class GalinfoPlugin(PluginBase):
                         dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
                         if (now - dt).total_seconds() > self.cache_ttl_seconds:
                             expired_keys.append(k)
-                    except Exception:
+                    except (ValueError, TypeError):
                         continue
             for k in expired_keys:
                 self._memory_cache.pop(k, None)
@@ -340,7 +342,7 @@ class GalinfoPlugin(PluginBase):
                 ts = v.get('timestamp') if isinstance(v, dict) else None
                 try:
                     order_dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S") if ts else datetime.datetime.min
-                except Exception:
+                except (ValueError, TypeError):
                     order_dt = datetime.datetime.min
                 sortable.append((order_dt, k))
             sortable.sort()  # 旧的在前
@@ -389,7 +391,7 @@ class GalinfoPlugin(PluginBase):
                 "response": "AI生成发帖内容失败。",
             }
         # 返回用于预览的原始缓存文本（截断留到上层处理）和使用的数据类型
-        preview_source = "AI增强" if getattr(self.auto_post, 'use_ai_enhanced_data', False) else "原始"
+        preview_source = "AI增强" if self.auto_post.use_ai_enhanced_data else "原始"
         return {
             "content": post_content,
             "visibility": "public",
@@ -404,7 +406,10 @@ class GalinfoPlugin(PluginBase):
         try:
             with open(self.cache_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except Exception:
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+        except Exception as e:
+            self._log_plugin_action("缓存加载失败", str(e))
             return {}
 
     # 保存缓存
@@ -414,8 +419,8 @@ class GalinfoPlugin(PluginBase):
             os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
             with open(self.cache_file, 'w', encoding='utf-8') as f:
                 json.dump(cache, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_plugin_action("缓存保存失败", str(e))
 
     async def on_mention(self, mention_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """处理 @mention 事件"""
@@ -605,7 +610,7 @@ class GalinfoPlugin(PluginBase):
             return False
         
         self._reset_daily_counter_if_needed()
-        if self.auto_posts_today >= getattr(self.auto_post, 'max_per_day', 4):
+        if self.auto_posts_today >= self.auto_post.max_posts_per_day:
             return False
         return True
 
@@ -688,7 +693,7 @@ class GalinfoPlugin(PluginBase):
         self.recent_games.append(selected_game)
         if len(self.recent_games) > 5:
             self.recent_games.pop(0)
-        suffix = "_AI" if getattr(self.auto_post, 'use_ai_enhanced_data', False) else "_original"
+        suffix = "_AI" if self.auto_post.use_ai_enhanced_data else "_original"
         cache_key = f"{selected_game}{suffix}"
         if cache_key not in cache:
             alt_suffix = "_original" if suffix == "_AI" else "_AI"
@@ -859,7 +864,7 @@ class GalinfoPlugin(PluginBase):
         return random.choice(available)
 
     async def _load_used_games(self) -> None:
-        if not hasattr(self, 'persistence_manager') or not self.persistence_manager:
+        if not self.persistence_manager:
             return
         try:
             data = await self.persistence_manager.get_plugin_data("Galinfo", "used_games")
@@ -867,14 +872,17 @@ class GalinfoPlugin(PluginBase):
                 loaded = json.loads(data)
                 if isinstance(loaded, list):
                     self.used_game_names = set(map(str, loaded))
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             # 忽略加载错误，保持空集合
+            self.used_game_names = set()
+        except Exception as e:
+            self._log_plugin_action("加载已使用游戏名失败", str(e))
             self.used_game_names = set()
 
     async def _save_used_games(self) -> None:
-        if not hasattr(self, 'persistence_manager') or not self.persistence_manager:
+        if not self.persistence_manager:
             return
         try:
             await self.persistence_manager.set_plugin_data("Galinfo", "used_games", json.dumps(list(self.used_game_names), ensure_ascii=False))
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_plugin_action("保存已使用游戏名失败", str(e))
